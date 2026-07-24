@@ -4,11 +4,11 @@ compatibility_date = "2024-11-01"
 
 # --- Public config (safe to commit) -----------------------------------------
 [vars]
-GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
-GITHUB_REPO  = "YOUR_REPO_NAME"
+GITHUB_OWNER = "Saad-Hassan25"
+GITHUB_REPO  = "SST"
 # The exact origin of your GitHub Pages site (no trailing slash, no path).
 # For a project page this is still https://USERNAME.github.io
-ALLOWED_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
+ALLOWED_ORIGIN = "https://Saad-Hassan25.github.io"
 RATE_LIMIT_PER_HOUR = "10"
 
 # --- Secrets (do NOT put here — set with wrangler) ---------------------------
