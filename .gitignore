@@ -1,0 +1,6 @@
+# Local runs of the scripts
+output/
+work/
+downloads/
+*.wav
+__pycache__/

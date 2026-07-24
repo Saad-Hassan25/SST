@@ -1,0 +1,29 @@
+name = "yt-actions-relay"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+
+# --- Public config (safe to commit) -----------------------------------------
+[vars]
+GITHUB_OWNER = "YOUR_GITHUB_USERNAME"
+GITHUB_REPO  = "YOUR_REPO_NAME"
+# The exact origin of your GitHub Pages site (no trailing slash, no path).
+# For a project page this is still https://USERNAME.github.io
+ALLOWED_ORIGIN = "https://YOUR_GITHUB_USERNAME.github.io"
+RATE_LIMIT_PER_HOUR = "10"
+
+# --- Secrets (do NOT put here — set with wrangler) ---------------------------
+#   wrangler secret put GITHUB_TOKEN
+#     A fine-grained personal access token scoped to this one repo with the
+#     "Contents" permission set to Read and write. That single permission covers
+#     both firing repository_dispatch and reading releases.
+#
+#   wrangler secret put TURNSTILE_SECRET     # optional
+#     Only if you enable Cloudflare Turnstile on the frontend. If unset, the
+#     Worker skips bot verification.
+
+# --- Optional per-IP rate limiting -------------------------------------------
+# Create a KV namespace, then uncomment and paste its id:
+#   wrangler kv namespace create RATE_LIMIT
+# [[kv_namespaces]]
+# binding = "RATE_LIMIT"
+# id = "PASTE_KV_NAMESPACE_ID"

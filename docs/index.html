@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Relay — remote media jobs</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+
+<!-- Turnstile (loads only matters if you set a site key below). Harmless if unused. -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" async defer></script>
+
+<style>
+  /* ============================ CONFIG ============================ */
+  /* Nothing visual here — see the <script> config block near the bottom. */
+
+  :root {
+    --bg:        #0E1018;
+    --panel:     #141726;
+    --panel-2:   #1B1F33;
+    --line:      #262B3D;
+    --line-hi:   #38405C;
+    --text:      #ECEEF6;
+    --muted:     #838AA6;
+    --accent:    #F5B342;   /* amber signal — the one loud color */
+    --accent-soft: rgba(245, 179, 66, 0.12);
+    --ok:        #56D07F;
+    --err:       #F0736A;
+
+    --font-display: 'Space Grotesk', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    --font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 500px at 50% -10%, rgba(245, 179, 66, 0.06), transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    line-height: 1.5;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 64px 16px 96px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .shell { width: min(600px, 100%); }
+
+  /* ---- header ---- */
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 10px;
+  }
+  .wordmark {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 40px;
+    letter-spacing: -0.02em;
+    margin: 0;
+  }
+  .lede {
+    color: var(--muted);
+    margin: 10px 0 32px;
+    max-width: 46ch;
+    font-size: 15px;
+  }
+
+  /* ---- card ---- */
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 24px;
+  }
+
+  /* ---- segmented mode control ---- */
+  .modes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 11px;
+    padding: 4px;
+    margin-bottom: 22px;
+  }
+  .mode-btn {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .mode-btn[aria-selected="true"] {
+    background: var(--panel-2);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--line-hi);
+  }
+  .mode-btn:hover:not([aria-selected="true"]) { color: var(--text); }
+
+  /* ---- fields ---- */
+  .field { margin-bottom: 18px; }
+  .field.hidden { display: none; }
+  .label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .input, .select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--line-hi);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 14px;
+    padding: 13px 14px;
+    border-radius: 10px;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .input::placeholder { color: #5A6280; }
+  .input:focus, .select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23838AA6' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 38px;
+    cursor: pointer;
+  }
+
+  #ts { margin-bottom: 18px; }
+
+  /* ---- submit ---- */
+  .submit {
+    width: 100%;
+    appearance: none;
+    border: 0;
+    background: var(--accent);
+    color: #241A05;
+    font-family: var(--font-ui);
+    font-weight: 700;
+    font-size: 15px;
+    padding: 14px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: filter 0.15s, opacity 0.15s;
+  }
+  .submit:hover { filter: brightness(1.06); }
+  .submit:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--accent-soft), 0 0 0 5px var(--accent); }
+  .submit:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  .hint {
+    margin: 12px 0 0;
+    font-size: 12px;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* =================== SIGNATURE: pipeline tracker =================== */
+  .run { margin-top: 26px; }
+  .run.hidden { display: none; }
+
+  .track {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: start;
+    position: relative;
+  }
+  .track::before { /* baseline rail */
+    content: "";
+    position: absolute;
+    top: 9px;
+    left: 12%;
+    right: 12%;
+    height: 2px;
+    background: var(--line);
+  }
+  .stage { text-align: center; position: relative; z-index: 1; }
+  .dot {
+    width: 20px; height: 20px;
+    margin: 0 auto 10px;
+    border-radius: 50%;
+    background: var(--bg);
+    border: 2px solid var(--line-hi);
+    transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+  }
+  .stage-name {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.2s;
+  }
+  /* states set via data-state on .run */
+  .stage.active .dot {
+    border-color: var(--accent);
+    background: var(--accent);
+    box-shadow: 0 0 0 0 var(--accent-soft);
+    animation: pulse 1.6s ease-out infinite;
+  }
+  .stage.active .stage-name { color: var(--accent); }
+  .stage.complete .dot { border-color: var(--ok); background: var(--ok); }
+  .stage.complete .stage-name { color: var(--text); }
+
+  @keyframes pulse {
+    0%   { box-shadow: 0 0 0 0 rgba(245, 179, 66, 0.45); }
+    100% { box-shadow: 0 0 0 12px rgba(245, 179, 66, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stage.active .dot { animation: none; }
+  }
+
+  .status {
+    margin-top: 18px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    min-height: 1.4em;
+  }
+  .status .elapsed { color: var(--text); }
+
+  /* ---- result ---- */
+  .result { margin-top: 22px; }
+  .result.hidden { display: none; }
+  .result-head {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ok);
+    margin: 0 0 14px;
+  }
+  .result-head.error { color: var(--err); }
+
+  .dl {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    background: var(--accent);
+    color: #241A05;
+    font-weight: 700;
+    font-size: 14px;
+    text-decoration: none;
+    padding: 12px 18px;
+    border-radius: 10px;
+  }
+  .dl:hover { filter: brightness(1.06); }
+  .meta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 12px;
+    word-break: break-all;
+  }
+
+  .transcript {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    max-height: 320px;
+    overflow: auto;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+    color: #C9CEE0;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .ghost {
+    appearance: none;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--line-hi);
+    font-family: var(--font-ui);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 9px 14px;
+    border-radius: 9px;
+    cursor: pointer;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+  }
+  .ghost:hover { border-color: var(--muted); }
+
+  .errmsg { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+
+  .foot {
+    margin-top: 28px;
+    text-align: center;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: #4A5170;
+  }
+  .foot a { color: var(--muted); }
+
+  @media (max-width: 460px) {
+    .wordmark { font-size: 32px; }
+    body { padding-top: 44px; }
+  }
+</style>
+</head>
+<body>
+  <main class="shell">
+    <p class="eyebrow">Remote media jobs</p>
+    <h1 class="wordmark">Relay</h1>
+    <p class="lede">Paste a link. A remote worker downloads the video — or transcribes it — and hands the result back here.</p>
+
+    <div class="card">
+      <!-- mode -->
+      <div class="modes" role="tablist" aria-label="Job type">
+        <button class="mode-btn" id="mode-download" role="tab" aria-selected="true">Download video</button>
+        <button class="mode-btn" id="mode-transcribe" role="tab" aria-selected="false">Transcribe</button>
+      </div>
+
+      <!-- url -->
+      <div class="field">
+        <label class="label" for="url">Video link</label>
+        <input class="input" id="url" type="url" inputmode="url" placeholder="https://…" autocomplete="off" spellcheck="false" />
+      </div>
+
+      <!-- quality (download only) -->
+      <div class="field" id="quality-field">
+        <label class="label" for="quality">Quality</label>
+        <select class="select" id="quality">
+          <option value="best">Best available</option>
+          <option value="1080p">1080p</option>
+          <option value="720p" selected>720p</option>
+          <option value="480p">480p</option>
+          <option value="360p">360p</option>
+        </select>
+      </div>
+
+      <!-- turnstile widget (rendered only if a site key is configured) -->
+      <div id="ts"></div>
+
+      <button class="submit" id="submit">Download video</button>
+      <p class="hint" id="hint">The remote job can take a few minutes. You can leave this tab open.</p>
+
+      <!-- pipeline tracker (signature) -->
+      <section class="run hidden" id="run" data-state="queued" aria-live="polite">
+        <div class="track">
+          <div class="stage" id="s-queued"><div class="dot"></div><div class="stage-name">Queued</div></div>
+          <div class="stage" id="s-running"><div class="dot"></div><div class="stage-name">Running</div></div>
+          <div class="stage" id="s-done"><div class="dot"></div><div class="stage-name">Done</div></div>
+        </div>
+        <div class="status" id="status"></div>
+      </section>
+
+      <!-- result -->
+      <section class="result hidden" id="result"></section>
+    </div>
+
+    <p class="foot">Runs on GitHub Actions · <a id="repo-link" href="#" target="_blank" rel="noopener">source</a></p>
+  </main>
+
+<script>
+  /* ============================ CONFIG ============================ */
+  // 1) Your deployed Cloudflare Worker URL (no trailing slash):
+  const WORKER_URL = "https://yt-actions-relay.YOUR-SUBDOMAIN.workers.dev";
+  // 2) Cloudflare Turnstile site key. Leave "" to disable the bot check
+  //    (you must also leave TURNSTILE_SECRET unset on the Worker).
+  const TURNSTILE_SITE_KEY = "";
+  // 3) Optional: link the footer to your repo.
+  const REPO_URL = "https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME";
+  /* ================================================================ */
+
+  const POLL_MS = 5000;
+  const MAX_POLLS = 480;          // ~40 min of auto-polling before pausing
+
+  const el = (id) => document.getElementById(id);
+  let mode = "download";
+  let turnstileToken = "";
+  let turnstileWidgetId = null;
+  let poller = null;
+
+  el("repo-link").href = REPO_URL;
+
+  /* ---- Turnstile ---- */
+  window.onTurnstileLoad = function () {
+    if (!TURNSTILE_SITE_KEY) return;
+    turnstileWidgetId = window.turnstile.render("#ts", {
+      sitekey: TURNSTILE_SITE_KEY,
+      theme: "dark",
+      callback: (t) => { turnstileToken = t; },
+      "expired-callback": () => { turnstileToken = ""; },
+      "error-callback": () => { turnstileToken = ""; },
+    });
+  };
+
+  /* ---- mode switch ---- */
+  function setMode(next) {
+    mode = next;
+    const dl = next === "download";
+    el("mode-download").setAttribute("aria-selected", String(dl));
+    el("mode-transcribe").setAttribute("aria-selected", String(!dl));
+    el("quality-field").classList.toggle("hidden", !dl);
+    el("submit").textContent = dl ? "Download video" : "Get transcript";
+  }
+  el("mode-download").addEventListener("click", () => setMode("download"));
+  el("mode-transcribe").addEventListener("click", () => setMode("transcribe"));
+
+  /* ---- tracker helpers ---- */
+  function setStage(state) {
+    el("run").dataset.state = state;
+    const order = { queued: 0, running: 1, done: 2 };
+    const stages = [["s-queued", "queued"], ["s-running", "running"], ["s-done", "done"]];
+    const idx = order[state] ?? 0;
+    stages.forEach(([id, name], i) => {
+      const node = el(id);
+      node.classList.remove("active", "complete");
+      if (state === "done") node.classList.add("complete");
+      else if (i < idx) node.classList.add("complete");
+      else if (i === idx) node.classList.add("active");
+    });
+  }
+
+  function fmtElapsed(sec) {
+    const m = Math.floor(sec / 60), s = sec % 60;
+    return m ? `${m}m ${String(s).padStart(2, "0")}s` : `${s}s`;
+  }
+  function fmtSize(bytes) {
+    if (!bytes && bytes !== 0) return "";
+    const mb = bytes / 1e6;
+    return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
+  }
+
+  /* ---- submit ---- */
+  el("submit").addEventListener("click", start);
+  el("url").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+
+  async function start() {
+    const url = el("url").value.trim();
+    if (!/^https?:\/\//.test(url)) { flashHint("Enter a link starting with http:// or https://"); return; }
+    if (TURNSTILE_SITE_KEY && !turnstileToken) { flashHint("Complete the verification check first."); return; }
+
+    resetResult();
+    el("submit").disabled = true;
+    el("run").classList.remove("hidden");
+    setStage("queued");
+    el("status").textContent = "Waiting for a runner to pick up the job…";
+
+    const body = { url, mode, turnstileToken };
+    if (mode === "download") body.quality = el("quality").value;
+
+    let data;
+    try {
+      const r = await fetch(`${WORKER_URL}/trigger`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      data = await r.json();
+      if (!r.ok) throw new Error(data.error || "Couldn't start the job.");
+    } catch (err) {
+      showError(err.message || "Couldn't reach the server.");
+      el("submit").disabled = false;
+      resetTurnstile();
+      return;
+    }
+
+    resetTurnstile();
+    poll(data.job_id, Date.now(), 0);
+  }
+
+  /* ---- polling ---- */
+  function poll(jobId, startedAt, attempts) {
+    clearTimeout(poller);
+    poller = setTimeout(async () => {
+      let data;
+      try {
+        const r = await fetch(`${WORKER_URL}/status?job_id=${encodeURIComponent(jobId)}`);
+        data = await r.json();
+      } catch {
+        data = { status: "running" }; // transient network blip — keep waiting
+      }
+
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+
+      if (data.status === "done") {
+        setStage("done");
+        el("status").textContent = "";
+        showResult(data);
+        el("submit").disabled = false;
+        return;
+      }
+      if (data.status === "error") {
+        showError(data.message || "The job failed.");
+        el("submit").disabled = false;
+        return;
+      }
+
+      // queued or running
+      setStage(data.status === "running" ? "running" : "queued");
+      const msg = data.status === "running" ? "Working on it…" : "Waiting for a runner…";
+      el("status").innerHTML = `${msg} <span class="elapsed">${fmtElapsed(elapsed)}</span>`;
+
+      if (attempts + 1 >= MAX_POLLS) {
+        el("status").innerHTML =
+          `Still working — remote jobs can take a while. ` +
+          `<button class="ghost" id="keep">Keep checking</button>`;
+        el("keep").addEventListener("click", () => poll(jobId, startedAt, 0));
+        return;
+      }
+      poll(jobId, startedAt, attempts + 1);
+    }, attempts === 0 ? 1500 : POLL_MS);
+  }
+
+  /* ---- result rendering ---- */
+  function showResult(data) {
+    const box = el("result");
+    box.classList.remove("hidden");
+    const files = data.files || [];
+
+    if (mode === "download") {
+      const f = files.find((x) => x.name !== "ERROR.txt");
+      box.innerHTML =
+        `<p class="result-head">Video ready</p>` +
+        (f
+          ? `<a class="dl" href="${f.url}" target="_blank" rel="noopener" download>⬇ Download file</a>
+             <div class="meta">${escapeHtml(f.name)} · ${fmtSize(f.size)}</div>`
+          : `<p class="errmsg">The file wasn't found. Try again.</p>`);
+      return;
+    }
+
+    // transcribe
+    const txt = files.find((x) => x.name.toLowerCase().endsWith(".txt") && x.name !== "ERROR.txt");
+    const srt = files.find((x) => x.name.toLowerCase().endsWith(".srt"));
+    const text = data.transcript || "";
+    box.innerHTML =
+      `<p class="result-head">Transcript ready</p>` +
+      `<div class="transcript" id="tx">${escapeHtml(text) || "(empty transcript)"}</div>` +
+      `<div class="row">
+         <button class="ghost" id="copy">Copy text</button>
+         ${txt ? `<a class="ghost" href="${txt.url}" target="_blank" rel="noopener" download>Download .txt</a>` : ""}
+         ${srt ? `<a class="ghost" href="${srt.url}" target="_blank" rel="noopener" download>Download .srt</a>` : ""}
+       </div>`;
+    const copyBtn = el("copy");
+    if (copyBtn) copyBtn.addEventListener("click", () => {
+      navigator.clipboard.writeText(text).then(() => {
+        copyBtn.textContent = "Copied";
+        setTimeout(() => (copyBtn.textContent = "Copy text"), 1500);
+      });
+    });
+  }
+
+  function showError(message) {
+    setStage(el("run").dataset.state); // freeze current stage
+    el("status").textContent = "";
+    const box = el("result");
+    box.classList.remove("hidden");
+    box.innerHTML =
+      `<p class="result-head error">Something went wrong</p>` +
+      `<p class="errmsg">${escapeHtml(message)}</p>` +
+      `<button class="ghost" id="retry">Try again</button>`;
+    el("retry").addEventListener("click", () => {
+      resetResult();
+      el("run").classList.add("hidden");
+    });
+  }
+
+  /* ---- small utils ---- */
+  function resetResult() {
+    const box = el("result");
+    box.classList.add("hidden");
+    box.innerHTML = "";
+  }
+  function resetTurnstile() {
+    turnstileToken = "";
+    if (turnstileWidgetId !== null && window.turnstile) window.turnstile.reset(turnstileWidgetId);
+  }
+  function flashHint(text) {
+    const h = el("hint");
+    const prev = h.textContent;
+    h.textContent = text;
+    h.style.color = "var(--err)";
+    setTimeout(() => { h.textContent = prev; h.style.color = "var(--muted)"; }, 2600);
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+
+  // init
+  setMode("download");
+</script>
+</body>
+</html>

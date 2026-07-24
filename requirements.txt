@@ -1,0 +1,5 @@
+# Transcription dependencies (CPU-only).
+# yt-dlp is installed separately in the workflow with `-U` so it's always current.
+onnx-asr[cpu,hub]
+soundfile
+numpy

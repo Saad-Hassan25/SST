@@ -1,0 +1,94 @@
+name: process
+
+# Triggered by the Cloudflare Worker via the GitHub "repository_dispatch" API.
+# event_type is either "download" or "transcribe" -> available as github.event.action.
+on:
+  repository_dispatch:
+    types: [download, transcribe]
+
+permissions:
+  contents: write   # required to create/edit releases and upload assets
+
+concurrency:
+  # One run per job id; don't cancel an in-flight job if the same id somehow repeats.
+  group: job-${{ github.event.client_payload.job_id }}
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350   # stay safely under GitHub's hard 6-hour cap
+    env:
+      MODE: ${{ github.event.action }}
+      URL: ${{ github.event.client_payload.url }}
+      QUALITY: ${{ github.event.client_payload.quality }}
+      JOB_ID: ${{ github.event.client_payload.job_id }}
+      GH_TOKEN: ${{ github.token }}          # used by the `gh` CLI
+      GITHUB_REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Validate job id
+        run: |
+          if ! echo "$JOB_ID" | grep -qE '^[A-Za-z0-9-]+$'; then
+            echo "Invalid job id"; exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      # Create the release immediately. Its presence + asset state is how the
+      # frontend tells queued (no release) vs running (release, no assets) vs done.
+      - name: Mark job as running
+        run: |
+          gh release create "job-$JOB_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Job $JOB_ID ($MODE)" \
+            --notes "status: running" || echo "release already exists, continuing"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install yt-dlp (latest)
+        run: pip install -U yt-dlp
+
+      - name: Cache Hugging Face models
+        if: env.MODE == 'transcribe'
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-parakeet-tdt-v3-silero-v1
+
+      - name: Install transcription dependencies
+        if: env.MODE == 'transcribe'
+        run: pip install -r requirements.txt
+
+      - name: Download video
+        if: env.MODE == 'download'
+        run: python scripts/fetch.py --mode video --url "$URL" --quality "$QUALITY" --out-dir output
+
+      - name: Download audio + transcribe
+        if: env.MODE == 'transcribe'
+        run: |
+          AUDIO=$(python scripts/fetch.py --mode audio --url "$URL" --out-dir work)
+          python scripts/transcribe.py --input "$AUDIO" --out-dir output
+
+      - name: Publish results
+        run: |
+          # create-if-missing so upload never fails on a missing release
+          gh release create "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+            --title "Job $JOB_ID ($MODE)" --notes "status: done" 2>/dev/null || true
+          gh release upload "job-$JOB_ID" output/* --repo "$GITHUB_REPOSITORY" --clobber
+          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "status: done"
+
+      # If anything above failed, mark the release so the frontend can show an error
+      # instead of spinning forever.
+      - name: Report failure
+        if: failure()
+        run: |
+          echo "Job failed. See the Actions logs for details." > ERROR.txt
+          gh release create "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+            --title "Job $JOB_ID ($MODE)" --notes "status: error" 2>/dev/null || true
+          gh release upload "job-$JOB_ID" ERROR.txt --repo "$GITHUB_REPOSITORY" --clobber || true
+          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "status: error" || true
