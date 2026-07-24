@@ -3,8 +3,15 @@
 
 Prints ONLY the final file path to stdout. All human-readable logs go to
 stderr, so the workflow can capture the path with `AUDIO=$(python fetch.py ...)`.
+
+Optional environment variables (all no-ops if unset) let the workflow get past
+datacenter-IP bot checks without changing this file:
+  COOKIES_FILE         path to a Netscape cookies.txt (YouTube "not a bot" fix)
+  YTDLP_PROXY          proxy URL, e.g. http://user:pass@host:port
+  YTDLP_PLAYER_CLIENT  comma-separated YouTube player clients to try, e.g. "tv,ios"
 """
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -28,6 +35,27 @@ def log(*a):
 
 def is_http_url(u: str) -> bool:
     return isinstance(u, str) and re.match(r"^https?://", u) is not None
+
+
+def apply_env_hardening(opts: dict) -> dict:
+    """Add cookies / proxy / player-client from env. Each is optional."""
+    cookies = os.environ.get("COOKIES_FILE")
+    if cookies and Path(cookies).exists():
+        opts["cookiefile"] = cookies
+        log(f"Using cookies file: {cookies}")
+
+    proxy = os.environ.get("YTDLP_PROXY")
+    if proxy:
+        opts["proxy"] = proxy
+        log("Using proxy")
+
+    client = os.environ.get("YTDLP_PLAYER_CLIENT")
+    if client:
+        clients = [c.strip() for c in client.split(",") if c.strip()]
+        opts["extractor_args"] = {"youtube": {"player_client": clients}}
+        log(f"YouTube player client(s): {clients}")
+
+    return opts
 
 
 def main():
@@ -65,6 +93,8 @@ def main():
             "no_warnings": True,
             "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "m4a"}],
         }
+
+    opts = apply_env_hardening(opts)
 
     log(f"Downloading ({args.mode}, quality={args.quality}) ...")
     with yt_dlp.YoutubeDL(opts) as ydl:
