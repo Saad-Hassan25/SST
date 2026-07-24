@@ -71,8 +71,8 @@ jobs:
       - name: Download audio + transcribe
         if: env.MODE == 'transcribe'
         run: |
-          AUDIO=$(python scripts/fetch.py --mode audio --url "$URL" --out-dir work)
-          python scripts/transcribe.py --input "$AUDIO" --out-dir output
+          python scripts/fetch.py --mode audio --url "$URL" --out-dir work
+          python scripts/transcribe.py --input-dir work --out-dir output
 
       - name: Publish results
         run: |
