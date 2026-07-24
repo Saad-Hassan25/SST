@@ -76,6 +76,13 @@ jobs:
 
       - name: Publish results
         run: |
+          # sanitize output filenames so gh doesn't read [brackets]/spaces/quotes as glob patterns
+          for f in output/*; do
+            [ -e "$f" ] || continue
+            d=$(dirname "$f"); b=$(basename "$f")
+            safe=$(printf '%s' "$b" | tr -c 'A-Za-z0-9._-' '_')
+            if [ "$b" != "$safe" ]; then mv "$f" "$d/$safe"; fi
+          done
           # create-if-missing so upload never fails on a missing release
           gh release create "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
             --title "Job $JOB_ID ($MODE)" --notes "status: done" 2>/dev/null || true
