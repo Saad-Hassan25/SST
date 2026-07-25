@@ -115,12 +115,41 @@ belonging to a job that is still running.
   audio in well under an hour.
 - GitHub allows ~20 concurrent jobs on free public repos — a natural throttle.
 
+## YouTube is not supported
+
+YouTube blocks the datacenter IP ranges GitHub Actions runners come from ("Sign in to
+confirm you're not a bot"). Both the frontend and the Worker reject YouTube links up
+front with an explanation, instead of queueing a job that can only fail.
+
+**Don't try to fix this with cookies, PO tokens, or `player_client` tricks.** They buy
+account access and bot attestation — not IP reputation. yt-dlp's maintainers file the
+logged-out datacenter-IP block under *intractable issues* and state that a PO token will
+not help if your IP is already blocked. Account cookies additionally stop working within
+days and carry a real risk of the account being banned, so they cannot run unattended.
+This was researched and settled; the scaffolding in `fetch.py` predates that finding.
+
+The only lever that changes the outcome is not using a datacenter IP — a self-hosted
+runner on a residential connection, or a residential proxy via `YTDLP_PROXY`. Both were
+considered and declined: the runner would execute strangers' URLs on a home network, and
+a metered proxy lets anyone run up an unbounded bill on a free public tool.
+
+## Optional yt-dlp network config
+
+`process.yml` reads three optional settings and no-ops when they're unset:
+
+| Name | Kind | Purpose |
+|---|---|---|
+| `YT_COOKIES_B64` | secret | base64 of a Netscape `cookies.txt`, for age-restricted or private content **on sites other than YouTube** |
+| `YTDLP_PROXY` | secret | proxy URL (may embed credentials) |
+| `YTDLP_PLAYER_CLIENT` | variable | comma-separated yt-dlp player clients |
+
+The cookies file is written to `$RUNNER_TEMP`, never the workspace — anything under
+`output/` is swept up by `gh release upload output/*` and would be published.
+
 ## Notes
 - **Keep yt-dlp current.** The workflow installs the latest each run; most "can't
   download" errors are stale-extractor issues fixed by updating.
-- **Private / age-restricted videos** need cookies and aren't exposed in this v1 UI.
 - **Quality presets** (best / 1080p / 720p / 480p / 360p) are fixed for v1; yt-dlp picks
   the closest match. Per-video format listing can be added later.
 - Test the transcription logic locally first with the companion notebook before relying
   on it in Actions.
-```

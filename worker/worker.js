@@ -44,6 +44,28 @@ function isHttpUrl(u) {
   }
 }
 
+// YouTube blocks the datacenter IPs that GitHub Actions runners come from, and no
+// yt-dlp option fixes that — cookies and PO tokens address account access, not IP
+// reputation. So these jobs can only ever fail. Rejecting them here costs no Actions
+// minutes, spends no rate-limit quota, and gives the user a real reason instead of a
+// generic "job failed" ten minutes later.
+const YOUTUBE_HOSTS = ["youtube.com", "youtu.be", "youtube-nocookie.com"];
+const YOUTUBE_MESSAGE =
+  "YouTube isn't supported: it blocks the datacenter IPs this tool runs on, so the " +
+  "job would always fail. Links from most other sites work.";
+
+// Suffix match on a dot boundary. A plain includes("youtube.com") would also accept
+// notyoutube.com and youtube.com.attacker.net.
+function isYouTubeUrl(u) {
+  let host;
+  try {
+    host = new URL(u).hostname.toLowerCase();
+  } catch {
+    return false;
+  }
+  return YOUTUBE_HOSTS.some((d) => host === d || host.endsWith("." + d));
+}
+
 // Optional bot check. Returns true (allowed) when no secret is configured.
 async function verifyTurnstile(env, token, ip) {
   if (!env.TURNSTILE_SECRET) return true;

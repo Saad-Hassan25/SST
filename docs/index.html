@@ -365,7 +365,7 @@
       <div id="ts"></div>
 
       <button class="submit" id="submit">Download video</button>
-      <p class="hint" id="hint">The remote job can take a few minutes. You can leave this tab open.</p>
+      <p class="hint" id="hint">Jobs take a few minutes — you can leave this tab open. YouTube links aren't supported.</p>
 
       <!-- pipeline tracker (signature) -->
       <section class="run hidden" id="run" data-state="queued" aria-live="polite">
@@ -407,6 +407,29 @@
   let turnstileToken = "";
   let turnstileWidgetId = null;
   let poller = null;
+
+  /* ---- YouTube: unsupported, on purpose ----
+     YouTube blocks the datacenter IPs the runners come from, and no yt-dlp option
+     fixes that — cookies and PO tokens buy account access, not IP reputation. So the
+     job can only fail. Say so up front instead of spending 10 minutes to fail.
+     The Worker rejects these too; this layer just saves the round trip.
+  */
+  const YOUTUBE_HOSTS = ["youtube.com", "youtu.be", "youtube-nocookie.com"];
+  const YOUTUBE_MESSAGE =
+    "YouTube isn't supported: it blocks the datacenter IPs this tool runs on, so the " +
+    "job would always fail. Links from most other sites work.";
+
+  // Suffix match on a dot boundary — a plain includes("youtube.com") would also match
+  // notyoutube.com and youtube.com.attacker.net.
+  function isYouTubeUrl(u) {
+    let host;
+    try {
+      host = new URL(u).hostname.toLowerCase();
+    } catch {
+      return false;
+    }
+    return YOUTUBE_HOSTS.some((d) => host === d || host.endsWith("." + d));
+  }
 
   el("repo-link").href = REPO_URL;
 
@@ -504,6 +527,9 @@
   async function start() {
     const url = el("url").value.trim();
     if (!/^https?:\/\//.test(url)) { flashHint("Enter a link starting with http:// or https://"); return; }
+
+    // Nothing is dispatched, so no tracker — just the explanation.
+    if (isYouTubeUrl(url)) { showUnsupported(YOUTUBE_MESSAGE); return; }
 
     resetResult();
     el("submit").disabled = true;
@@ -625,6 +651,17 @@
         setTimeout(() => (copyBtn.textContent = "Copy text"), 1500);
       });
     });
+  }
+
+  // Not a failure — a rejected input. No "try again", since retrying can't help.
+  function showUnsupported(message) {
+    clearTimeout(poller);
+    el("run").classList.add("hidden");
+    const box = el("result");
+    box.classList.remove("hidden");
+    box.innerHTML =
+      `<p class="result-head error">Not supported</p>` +
+      `<p class="errmsg">${escapeHtml(message)}</p>`;
   }
 
   function showError(message) {

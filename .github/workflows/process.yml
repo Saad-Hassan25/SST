@@ -53,6 +53,54 @@ jobs:
       - name: Install yt-dlp (latest)
         run: pip install -U yt-dlp
 
+      # Optional anti-bot config for YouTube, which blocks GitHub's datacenter IPs.
+      # Every branch below is a no-op when its secret/variable is unset, and fetch.py
+      # gates on these env vars being present — so an unconfigured repo behaves exactly
+      # as before. Nothing here is ever echoed: GitHub masks the raw secret in logs but
+      # NOT its decoded form.
+      - name: Configure yt-dlp network options
+        env:
+          YT_COOKIES_B64: ${{ secrets.YT_COOKIES_B64 }}
+          YT_PROXY: ${{ secrets.YTDLP_PROXY }}
+          YT_PLAYER_CLIENT: ${{ vars.YTDLP_PLAYER_CLIENT }}
+        run: |
+          if [ -n "$YT_COOKIES_B64" ]; then
+            # RUNNER_TEMP, never the workspace: a cookies file under output/ would be
+            # swept up by `gh release upload output/*` and published on a public repo.
+            cookies="$RUNNER_TEMP/cookies.txt"
+            # `tr` strips the line wrapping that `base64` adds by default — without it
+            # `base64 -d` rejects otherwise-valid input.
+            if ! printf '%s' "$YT_COOKIES_B64" | tr -d '[:space:]' | base64 -d > "$cookies" 2>/dev/null; then
+              echo "::error::YT_COOKIES_B64 is not valid base64."
+              exit 1
+            fi
+            chmod 600 "$cookies"
+            if [ ! -s "$cookies" ]; then
+              echo "::error::YT_COOKIES_B64 decoded to an empty file."
+              exit 1
+            fi
+            echo "COOKIES_FILE=$cookies" >> "$GITHUB_ENV"
+            echo "Cookies: configured ($(wc -l < "$cookies") lines)."
+          else
+            echo "Cookies: not configured."
+          fi
+
+          # Proxy URLs often embed credentials, so this stays a secret and is never printed.
+          if [ -n "$YT_PROXY" ]; then
+            echo "YTDLP_PROXY=$YT_PROXY" >> "$GITHUB_ENV"
+            echo "Proxy: configured."
+          else
+            echo "Proxy: not configured."
+          fi
+
+          # Not secret — a repo variable, so it can be changed without a new secret.
+          if [ -n "$YT_PLAYER_CLIENT" ]; then
+            echo "YTDLP_PLAYER_CLIENT=$YT_PLAYER_CLIENT" >> "$GITHUB_ENV"
+            echo "Player client(s): $YT_PLAYER_CLIENT"
+          else
+            echo "Player client(s): yt-dlp default."
+          fi
+
       - name: Cache Hugging Face models
         if: env.MODE == 'transcribe'
         uses: actions/cache@v4
