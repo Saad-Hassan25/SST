@@ -25,6 +25,12 @@ jobs:
       JOB_ID: ${{ github.event.client_payload.job_id }}
       DIARIZE: ${{ github.event.client_payload.diarize }}
       SPEAKERS: ${{ github.event.client_payload.speakers }}
+      # Notification. Present only when the user asked to be emailed. NOTIFY_EMAIL is
+      # PII on a public repo, so it is masked in "Validate inputs" and never echoed.
+      # SITE_URL comes from the Worker (its ALLOWED_ORIGIN), NOT from client input, so
+      # the emailed link always points at the real site and cannot be a phishing link.
+      NOTIFY_EMAIL: ${{ github.event.client_payload.email }}
+      SITE_URL: ${{ github.event.client_payload.site }}
       GH_TOKEN: ${{ github.token }}          # used by the `gh` CLI
       GITHUB_REPOSITORY: ${{ github.repository }}
     steps:
@@ -43,6 +49,15 @@ jobs:
             echo "::error::Invalid speaker count"; exit 1
           fi
           echo "JOB_ERROR_FILE=$RUNNER_TEMP/job_error.txt" >> "$GITHUB_ENV"
+          # Keep the recipient out of the public logs. If it is somehow malformed, drop
+          # it (skip the notification) rather than failing an otherwise-valid job.
+          if [ -n "$NOTIFY_EMAIL" ]; then
+            echo "::add-mask::$NOTIFY_EMAIL"
+            if ! echo "$NOTIFY_EMAIL" | grep -qE '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$'; then
+              echo "Notify email looks invalid; skipping notification."
+              echo "NOTIFY_EMAIL=" >> "$GITHUB_ENV"
+            fi
+          fi
 
       - uses: actions/checkout@v4
 
@@ -69,7 +84,7 @@ jobs:
 
       # Optional anti-bot config for sites that block datacenter IPs. Every branch below
       # is a no-op when its secret/variable is unset, and fetch.py gates on these env
-      # vars being present — so an unconfigured repo behaves exactly as before. Nothing
+      # vars being present - so an unconfigured repo behaves exactly as before. Nothing
       # here is ever echoed: GitHub masks the raw secret in logs but NOT its decoded form.
       - name: Configure yt-dlp network options
         env:
@@ -81,7 +96,7 @@ jobs:
             # RUNNER_TEMP, never the workspace: a cookies file under output/ would be
             # swept up by `gh release upload output/*` and published on a public repo.
             cookies="$RUNNER_TEMP/cookies.txt"
-            # `tr` strips the line wrapping that `base64` adds by default — without it
+            # `tr` strips the line wrapping that `base64` adds by default - without it
             # `base64 -d` rejects otherwise-valid input.
             if ! printf '%s' "$YT_COOKIES_B64" | tr -d '[:space:]' | base64 -d > "$cookies" 2>/dev/null; then
               echo "::error::YT_COOKIES_B64 is not valid base64."
@@ -106,7 +121,7 @@ jobs:
             echo "Proxy: not configured."
           fi
 
-          # Not secret — a repo variable, so it can be changed without a new secret.
+          # Not secret - a repo variable, so it can be changed without a new secret.
           if [ -n "$YT_PLAYER_CLIENT" ]; then
             echo "YTDLP_PLAYER_CLIENT=$YT_PLAYER_CLIENT" >> "$GITHUB_ENV"
             echo "Player client(s): $YT_PLAYER_CLIENT"
@@ -175,7 +190,7 @@ jobs:
           done
 
           # Ensure the release exists (in case "Mark job as running" was skipped) and
-          # flip the stage to uploading — still status:running, so the frontend does
+          # flip the stage to uploading - still status:running, so the frontend does
           # NOT report done until every asset is up (see the loop below).
           uploading=$(printf 'status: running\nstage: uploading\nmode: %s' "$MODE")
           gh release create "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
@@ -184,7 +199,7 @@ jobs:
 
           gh release upload "job-$JOB_ID" output/* --repo "$GITHUB_REPOSITORY" --clobber
 
-          # Mark done LAST — this is the authoritative signal the Worker keys on, so it
+          # Mark done LAST - this is the authoritative signal the Worker keys on, so it
           # must land only after all assets are uploaded. Retry so a transient edit
           # failure doesn't strand the job as "running" forever.
           done=$(printf 'status: done\nmode: %s' "$MODE")
@@ -193,8 +208,27 @@ jobs:
             sleep 2
           done
 
+      # Notify by email if the user asked for it. Best-effort: send_email.py exits 0
+      # even if the send fails, so a mail hiccup never marks a finished job as failed.
+      # The link is built from SITE_URL (the Worker's own origin) plus the validated
+      # JOB_ID, so nothing user-controlled ends up in it.
+      - name: Email the result
+        if: success() && env.NOTIFY_EMAIL != ''
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          base="${SITE_URL:-https://prompter.ai-bytes.tech}"
+          link="${base%/}/?job=$JOB_ID"
+          if [ "$MODE" = "download" ]; then what="video download"; else what="transcript"; fi
+          export EMAIL_TO="$NOTIFY_EMAIL"
+          export EMAIL_SUBJECT="Your Prompter $what is ready"
+          export EMAIL_TEXT="$(printf 'Your %s is ready.\n\nOpen it here:\n%s\n\nThis link stays available for a few days.\n' "$what" "$link")"
+          export EMAIL_HTML="<p>Your $what is ready.</p><p><a href=\"$link\">Open your result</a></p><p style=\"color:#6b7280;font-size:13px\">This link stays available for a few days.</p>"
+          python scripts/send_email.py
+
       # If anything above failed, mark the release so the frontend can show an error
-      # instead of spinning forever — with the real reason when a script captured one.
+      # instead of spinning forever, with the real reason when a script captured one.
       - name: Report failure
         if: failure()
         run: |
@@ -208,3 +242,20 @@ jobs:
             --title "Job $JOB_ID ($MODE)" --notes "$notes" 2>/dev/null \
             || gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "$notes" || true
           gh release upload "job-$JOB_ID" ERROR.txt --repo "$GITHUB_REPOSITORY" --clobber || true
+
+      - name: Email the failure
+        if: failure() && env.NOTIFY_EMAIL != ''
+        env:
+          GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          base="${SITE_URL:-https://prompter.ai-bytes.tech}"
+          link="${base%/}/?job=$JOB_ID"
+          reason="The job could not be completed."
+          if [ -s "$JOB_ERROR_FILE" ]; then reason="$(cat "$JOB_ERROR_FILE")"; fi
+          esc="$(printf '%s' "$reason" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
+          export EMAIL_TO="$NOTIFY_EMAIL"
+          export EMAIL_SUBJECT="Your Prompter job could not be completed"
+          export EMAIL_TEXT="$(printf 'Unfortunately your job did not finish.\n\nReason: %s\n\nYou can try again here:\n%s\n' "$reason" "$link")"
+          export EMAIL_HTML="<p>Unfortunately your job did not finish.</p><p><b>Reason:</b> $esc</p><p><a href=\"$link\">Try again</a></p>"
+          python scripts/send_email.py

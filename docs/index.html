@@ -191,6 +191,9 @@
 
   .status { margin-top: 16px; font-size: 14px; color: var(--muted); text-align: center; min-height: 1.4em; }
   .status .elapsed { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 4px; }
+  .notice { margin: 12px 0 0; padding: 11px 14px; font-size: 13px; color: var(--muted);
+    background: var(--surface-2); border-left: 2px solid var(--accent); }
+  .notice.hidden { display: none; }
 
   /* ============================ RESULT ============================ */
   .result { margin-top: 24px; animation: reveal .4s var(--ease); }
@@ -305,6 +308,20 @@
               <input class="input" id="speakers" type="number" min="1" max="20" step="1" value="2" inputmode="numeric" />
             </div>
 
+            <div class="field" id="notify-field">
+              <label class="check">
+                <input type="checkbox" id="notify" />
+                <span>Email me the result
+                  <span class="sub2">Get a link by email when it is ready, so you can close this tab.</span>
+                </span>
+              </label>
+            </div>
+
+            <div class="field hidden" id="email-field">
+              <label class="label" for="email">Your email</label>
+              <input class="input" id="email" type="email" inputmode="email" placeholder="you@example.com" autocomplete="email" spellcheck="false" />
+            </div>
+
             <div id="ts"></div>
 
             <button class="submit" id="submit">Download video</button>
@@ -320,6 +337,7 @@
             </div>
             <div class="bar"><span class="bar-fill"></span></div>
             <p class="status" id="status"><span id="status-msg"></span><span class="elapsed" id="elapsed"></span></p>
+            <p class="notice hidden" id="notice"></p>
           </section>
 
           <!-- result -->
@@ -463,6 +481,11 @@
   el("mode-download").addEventListener("click", () => setMode("download"));
   el("mode-transcribe").addEventListener("click", () => setMode("transcribe"));
   el("diarize").addEventListener("change", () => { syncFields(); if (el("diarize").checked) reveal(el("speakers-field")); });
+  el("notify").addEventListener("change", () => {
+    const on = el("notify").checked;
+    el("email-field").classList.toggle("hidden", !on);
+    if (on) { reveal(el("email-field")); el("email").focus(); }
+  });
 
   /* ---- tracker helpers ---- */
   function setStage(state) {
@@ -528,6 +551,16 @@
       }
     }
 
+    const wantEmail = el("notify").checked;
+    let email = "";
+    if (wantEmail) {
+      email = el("email").value.trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
+        flashHint("Enter a valid email address.");
+        return;
+      }
+    }
+
     resetResult();
     el("submit").disabled = true;
 
@@ -542,6 +575,7 @@
     const body = { url, mode, turnstileToken: token };
     if (mode === "download") body.quality = el("quality").value;
     if (wantDiarize) { body.diarize = true; body.speakers = speakers; }
+    if (wantEmail) { body.notify = true; body.email = email; }
 
     let data;
     try {
@@ -560,6 +594,10 @@
     mode = data.mode || mode;
     setUrlToJob(currentJobId);
     queuedStreak = 0;
+    if (wantEmail) {
+      el("notice").textContent = `We will email ${email} a link when it is ready. You can close this tab.`;
+      el("notice").classList.remove("hidden");
+    }
     startTicker(Date.now());
     track(currentJobId, 0);
   }
@@ -575,7 +613,7 @@
         data = await r.json();
       } catch { data = { status: "running" }; }
 
-      if (data.status === "done") { setStage("done"); stopTicker(); el("status-msg").textContent = ""; el("elapsed").textContent = ""; showResult(data); finishInput(); return; }
+      if (data.status === "done") { setStage("done"); stopTicker(); el("status-msg").textContent = ""; el("elapsed").textContent = ""; el("notice").classList.add("hidden"); showResult(data); finishInput(); return; }
       if (data.status === "error") { stopTicker(); showError(data.message || "The job failed."); finishInput(); return; }
 
       queuedStreak = data.status === "queued" ? queuedStreak + 1 : 0;
@@ -665,7 +703,7 @@
     clearTimeout(poller); stopTicker();
     if (hideTracker) el("run").classList.add("hidden");
     else setStage(el("run").dataset.state);
-    el("status-msg").textContent = ""; el("elapsed").textContent = "";
+    el("status-msg").textContent = ""; el("elapsed").textContent = ""; el("notice").classList.add("hidden");
     const box = el("result");
     box.classList.remove("hidden");
     box.innerHTML =
@@ -684,6 +722,7 @@
     el("shared-banner").classList.add("hidden");
     el("form").classList.remove("hidden");
     el("run").classList.add("hidden");
+    el("notice").classList.add("hidden");
     resetResult();
     el("submit").disabled = false;
     el("url").focus();

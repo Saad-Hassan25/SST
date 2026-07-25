@@ -104,12 +104,24 @@ async function handleTrigger(request, env) {
     return json(env, { error: "Invalid request." }, 400);
   }
 
-  const { url, mode, quality = "best", diarize = false, speakers, turnstileToken } = body || {};
+  const { url, mode, quality = "best", diarize = false, speakers, notify = false, email, turnstileToken } = body || {};
   if (!MODES.has(mode)) return json(env, { error: "Pick download or transcribe." }, 400);
   if (!isHttpUrl(url)) return json(env, { error: "Enter a valid video link (http or https)." }, 400);
   if (mode === "download" && !QUALITIES.has(quality))
     return json(env, { error: "Unknown quality option." }, 400);
   if (isYouTubeUrl(url)) return json(env, { error: YOUTUBE_MESSAGE }, 400);
+
+  // Optional email notification. Validate the address here; it becomes an SMTP
+  // recipient on the runner. The link in the email is built server-side from
+  // ALLOWED_ORIGIN, never from client input, so this can't be turned into a relay
+  // that mails attacker-controlled links to arbitrary people.
+  let notifyEmail = null;
+  if (notify === true) {
+    const e = typeof email === "string" ? email.trim() : "";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || e.length > 254)
+      return json(env, { error: "Enter a valid email address." }, 400);
+    notifyEmail = e;
+  }
 
   // Diarization is transcribe-only. `speakers` ends up as a command argument on the
   // runner, so it has to be a plain small integer. Number() rather than parseInt():
@@ -144,6 +156,9 @@ async function handleTrigger(request, env) {
           job_id: jobId,
           diarize: wantDiarize,
           speakers: speakerCount,
+          // Only present when the user opted into email. `site` is the trusted base
+          // for the emailed link; the workflow falls back to a default if it's blank.
+          ...(notifyEmail ? { email: notifyEmail, site: env.ALLOWED_ORIGIN || "" } : {}),
         },
       }),
     }
@@ -153,7 +168,7 @@ async function handleTrigger(request, env) {
     const detail = (await dispatch.text()).slice(0, 200);
     return json(env, { error: "Couldn't start the job. Try again.", detail }, 502);
   }
-  return json(env, { job_id: jobId, mode });
+  return json(env, { job_id: jobId, mode, notify: !!notifyEmail });
 }
 
 // The workflow writes the release notes as `key: value` lines (status / stage / mode).
