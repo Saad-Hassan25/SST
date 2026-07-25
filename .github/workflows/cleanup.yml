@@ -1,0 +1,91 @@
+name: cleanup
+
+# Every job in process.yml creates a `job-<id>` release to carry its result and act
+# as the status signal. Nothing ever deletes them, so releases, git tags, and asset
+# storage grow without bound. This prunes the old ones.
+on:
+  schedule:
+    # Daily, off the hour — scheduled runs bunch up (and get delayed) at :00.
+    # NOTE: GitHub disables cron triggers on repos with 60 days of no activity.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      retention_days:
+        description: "Delete job-* releases older than this many days"
+        default: "3"
+      dry_run:
+        description: "List what would be deleted, without deleting"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # required to delete releases and their tags
+
+concurrency:
+  group: cleanup
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      # `inputs` is null on a scheduled run, so these fall back to the defaults.
+      RETENTION_DAYS: ${{ inputs.retention_days || '3' }}
+      DRY_RUN: ${{ inputs.dry_run || false }}
+    steps:
+      - name: Prune old job-* releases
+        run: |
+          set -euo pipefail
+
+          # Retention MUST stay above process.yml's 350-minute job timeout, or this
+          # could delete the release of a job that is still running — which the
+          # frontend would then read as "queued" forever.
+          if [ "$RETENTION_DAYS" -lt 1 ]; then
+            echo "::error::retention_days must be >= 1 (got $RETENTION_DAYS)"; exit 1
+          fi
+
+          CUTOFF=$(date -u -d "$RETENTION_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Retention: ${RETENTION_DAYS}d — deleting job-* releases created before $CUTOFF"
+
+          # --paginate walks every page, not just the first 30. Comparing the ISO-8601
+          # UTC timestamps as strings is correct: same format, so lexical == chronological.
+          # CUTOFF is passed through the environment to keep it out of the jq string.
+          CUTOFF="$CUTOFF" gh api --paginate "repos/$REPO/releases" \
+            --jq '.[]
+                  | select(.tag_name | startswith("job-"))
+                  | select(.created_at < env.CUTOFF)
+                  | .tag_name' > stale.txt
+
+          count=$(grep -c . stale.txt || true)
+          if [ "$count" -eq 0 ]; then
+            echo "Nothing to prune."
+            echo "Nothing to prune." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "Found $count stale release(s)."
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "DRY RUN — would delete:"
+            cat stale.txt
+            { echo "### Dry run — would delete $count release(s)"; sed 's/^/- /' stale.txt; } \
+              >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          # --cleanup-tag also removes the git tag; without it the release goes away
+          # but `job-*` tags accumulate forever instead.
+          deleted=0; failed=0
+          while read -r tag; do
+            [ -n "$tag" ] || continue
+            if gh release delete "$tag" --repo "$REPO" --cleanup-tag --yes; then
+              echo "deleted $tag"; deleted=$((deleted + 1))
+            else
+              echo "::warning::failed to delete $tag"; failed=$((failed + 1))
+            fi
+          done < stale.txt
+
+          echo "Deleted $deleted release(s), $failed failure(s)."
+          echo "Deleted **$deleted** release(s) older than ${RETENTION_DAYS}d ($failed failure(s))." \
+            >> "$GITHUB_STEP_SUMMARY"

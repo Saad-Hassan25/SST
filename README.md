@@ -86,14 +86,27 @@ Commit. Once Pages redeploys, open the Pages URL and try a link.
 Keep these consistent: only set the Worker secret **if** the frontend has a site key.
 (Secret set but no site key ⇒ every request fails verification.)
 
-### Per-IP rate limit
+### Per-IP rate limit — **already on in this repo**
+The `RATE_LIMIT` KV namespace is created and bound in `worker/wrangler.toml`, capped by
+`RATE_LIMIT_PER_HOUR` (currently 10). Setting it up from scratch elsewhere:
 ```bash
 cd worker
 wrangler kv namespace create RATE_LIMIT   # copy the id it prints
-# uncomment the [[kv_namespaces]] block in wrangler.toml and paste the id
-wrangler deploy
+# paste the id into the [[kv_namespaces]] block in wrangler.toml
+wrangler deploy                           # the cap is not live until you deploy
 ```
-Adjust `RATE_LIMIT_PER_HOUR` in `wrangler.toml` to taste.
+The Worker skips rate limiting entirely when the binding is absent, so deleting that
+block silently reopens the hole rather than failing loudly.
+
+**Caveat:** KV reads are eventually consistent (~60s), so this caps sustained abuse, not
+a parallel burst — several simultaneous requests can each read a stale count and pass.
+For a hard cap, switch to Cloudflare's native rate-limiting binding, which is atomic.
+
+### Release cleanup
+`.github/workflows/cleanup.yml` deletes `job-*` releases (and their tags) older than 3
+days, nightly. Run it manually from the Actions tab with `dry_run` first to preview.
+Keep retention above `process.yml`'s 350-minute timeout so it can't delete a release
+belonging to a job that is still running.
 
 ## Costs & limits
 - **Free** on a public repo (unlimited Actions minutes on standard runners).

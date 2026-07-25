@@ -388,9 +388,13 @@
   /* ============================ CONFIG ============================ */
   // 1) Your deployed Cloudflare Worker URL (no trailing slash):
   const WORKER_URL = "https://yt-actions-relay.yt-actions-relay.workers.dev";
-  // 2) Cloudflare Turnstile site key. Leave "" to disable the bot check
-  //    (you must also leave TURNSTILE_SECRET unset on the Worker).
-  const TURNSTILE_SITE_KEY = "";
+  // 2) Cloudflare Turnstile site key. This and TURNSTILE_SECRET on the Worker are a
+  //    pair — and the failure modes are NOT symmetric:
+  //      site key set, no Worker secret  -> widget runs, Worker skips the check (safe)
+  //      Worker secret set, no site key  -> every request 403s (site is dead)
+  //    So always set this FIRST, ship it, then `wrangler secret put TURNSTILE_SECRET`.
+  //    Leave "" to disable the bot check entirely.
+  const TURNSTILE_SITE_KEY = "0x4AAAAAAD9cl1oEoCuNjr3Y";
   // 3) Optional: link the footer to your repo.
   const REPO_URL = "https://github.com/YOUR_GITHUB_USERNAME/YOUR_REPO_NAME";
   /* ================================================================ */
@@ -406,17 +410,55 @@
 
   el("repo-link").href = REPO_URL;
 
-  /* ---- Turnstile ---- */
+  /* ---- Turnstile ----
+     Solved on submit, not on page load. A Turnstile token expires ~5 minutes after
+     it's issued and is single-use, so a load-time token is often dead by the time
+     someone has pasted a link — and because the widget is invisible, there is
+     nothing for them to click to fix it. `execution: "execute"` defers the
+     challenge until we ask for it; getTurnstileToken() below is that ask.
+  */
+  let tokenWaiters = [];
+
+  function settleWaiters(err, token) {
+    const waiting = tokenWaiters;
+    tokenWaiters = [];
+    waiting.forEach((w) => (err ? w.reject(err) : w.resolve(token)));
+  }
+
   window.onTurnstileLoad = function () {
     if (!TURNSTILE_SITE_KEY) return;
     turnstileWidgetId = window.turnstile.render("#ts", {
       sitekey: TURNSTILE_SITE_KEY,
       theme: "dark",
-      callback: (t) => { turnstileToken = t; },
+      appearance: "interaction-only",  // invisible unless this visitor needs a real challenge
+      execution: "execute",            // don't solve until getTurnstileToken() runs
+      callback: (t) => { turnstileToken = t; settleWaiters(null, t); },
       "expired-callback": () => { turnstileToken = ""; },
-      "error-callback": () => { turnstileToken = ""; },
+      "error-callback": () => {
+        turnstileToken = "";
+        settleWaiters(new Error("The verification check couldn't run. Reload the page and try again."));
+        return true;  // handled — don't let Turnstile paint its own error state
+      },
     });
   };
+
+  // Resolves to "" when Turnstile is disabled, so callers need no special case.
+  function getTurnstileToken() {
+    if (!TURNSTILE_SITE_KEY) return Promise.resolve("");
+    if (turnstileToken) return Promise.resolve(turnstileToken);
+    if (turnstileWidgetId === null || !window.turnstile)
+      return Promise.reject(new Error("The verification check didn't load. Allow challenges.cloudflare.com, then reload."));
+
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(
+        () => settleWaiters(new Error("Verification timed out. Try again.")),
+        20000
+      );
+      const done = (fn) => (v) => { clearTimeout(timer); fn(v); };
+      tokenWaiters.push({ resolve: done(resolve), reject: done(reject) });
+      window.turnstile.execute(turnstileWidgetId);
+    });
+  }
 
   /* ---- mode switch ---- */
   function setMode(next) {
@@ -462,15 +504,26 @@
   async function start() {
     const url = el("url").value.trim();
     if (!/^https?:\/\//.test(url)) { flashHint("Enter a link starting with http:// or https://"); return; }
-    if (TURNSTILE_SITE_KEY && !turnstileToken) { flashHint("Complete the verification check first."); return; }
 
     resetResult();
     el("submit").disabled = true;
+
+    // Clear the bot check before showing the tracker, so a verification failure
+    // doesn't leave a phantom "queued" job that was never dispatched.
+    let token;
+    try {
+      token = await getTurnstileToken();
+    } catch (err) {
+      flashHint(err.message);
+      el("submit").disabled = false;
+      return;
+    }
+
     el("run").classList.remove("hidden");
     setStage("queued");
     el("status").textContent = "Waiting for a runner to pick up the job…";
 
-    const body = { url, mode, turnstileToken };
+    const body = { url, mode, turnstileToken: token };
     if (mode === "download") body.quality = el("quality").value;
 
     let data;

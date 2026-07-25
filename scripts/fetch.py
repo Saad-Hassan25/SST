@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Download a video (at a quality preset) or its audio, using yt-dlp.
 
-Prints ONLY the final file path to stdout. All human-readable logs go to
-stderr, so the workflow can capture the path with `AUDIO=$(python fetch.py ...)`.
+Prints ONLY the final file path to stdout; all human-readable logs go to stderr.
+The path on stdout is for local/manual runs. Do NOT capture it in the workflow with
+`AUDIO=$(python fetch.py ...)` — long video titles overflowed the shell argument
+limit ("Argument list too long"). The pipeline hands off through a folder instead:
+`fetch.py --out-dir work` then `transcribe.py --input-dir work`.
 
 Optional environment variables (all no-ops if unset) let the workflow get past
 datacenter-IP bot checks without changing this file:

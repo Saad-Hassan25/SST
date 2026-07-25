@@ -4,3 +4,11 @@ work/
 downloads/
 *.wav
 __pycache__/
+
+# Wrangler local state & account cache — created by `wrangler deploy` / `kv namespace`.
+# Never commit these: the repo is public and they hold account identifiers.
+.wrangler/
+
+# Never commit a cookies file (see the COOKIES_FILE env in scripts/fetch.py).
+cookies.txt
+*cookies*.txt

@@ -21,9 +21,10 @@ RATE_LIMIT_PER_HOUR = "10"
 #     Only if you enable Cloudflare Turnstile on the frontend. If unset, the
 #     Worker skips bot verification.
 
-# --- Optional per-IP rate limiting -------------------------------------------
-# Create a KV namespace, then uncomment and paste its id:
-#   wrangler kv namespace create RATE_LIMIT
-# [[kv_namespaces]]
-# binding = "RATE_LIMIT"
-# id = "PASTE_KV_NAMESPACE_ID"
+# --- Per-IP rate limiting (ON) -----------------------------------------------
+# Created with: wrangler kv namespace create RATE_LIMIT
+# The Worker skips rate limiting entirely if this binding is missing, so removing
+# it silently reopens the abuse hole. Adjust the cap via RATE_LIMIT_PER_HOUR above.
+[[kv_namespaces]]
+binding = "RATE_LIMIT"
+id = "50238c3850df4aa59c76093ff9c78621"
