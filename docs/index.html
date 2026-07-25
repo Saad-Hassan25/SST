@@ -4,381 +4,376 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <meta name="color-scheme" content="light dark" />
-<title>Prompter — fetch & transcribe media</title>
-<meta name="description" content="Paste a link. Prompter downloads the video or returns a transcript — with optional speaker labels." />
+<title>Prompter, fetch and transcribe media</title>
+<meta name="description" content="Paste a link. Prompter downloads the video or returns a transcript, with optional speaker labels." />
 
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
 <!-- Turnstile. Loads only matters if a site key is set below; harmless if unused. -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" async defer></script>
 
 <style>
-  /* ===================== THEME =====================
-     Theme-aware: light by default, dark via prefers-color-scheme. One indigo accent.
-     Nothing to configure here — see the CONFIG block in the <script> at the bottom. */
+  /* =====================================================================
+     PROMPTER, sharp editorial theme. Theme aware (light default, dark via
+     prefers-color-scheme). One accent. No rounded corners anywhere.
+     Configuration lives in the CONFIG block in the script at the bottom.
+     ===================================================================== */
   :root {
-    --bg:            #f6f7f9;
+    --bg:            #ffffff;
+    --bg-2:          #f4f5f7;
     --surface:       #ffffff;
-    --surface-2:     #f1f2f5;
-    --border:        #e5e7eb;
-    --border-strong: #d5d8df;
-    --text:          #111827;
+    --surface-2:     #f4f5f7;
+    --line:          #e4e6ea;
+    --line-strong:   #c9ccd3;
+    --ink:           #0b0d12;
+    --text:          #1c2027;
     --muted:         #6b7280;
-    --faint:         #9ca3af;
-    --accent:        #4f46e5;
-    --accent-hover:  #4338ca;
-    --accent-weak:   rgba(79, 70, 229, 0.10);
+    --faint:         #9aa0ac;
+    --accent:        #3b3bdb;
+    --accent-hover:  #2d2db8;
+    --accent-weak:   rgba(59, 59, 219, 0.10);
     --on-accent:     #ffffff;
-    --ok:            #059669;
-    --err:           #dc2626;
-    --err-weak:      rgba(220, 38, 38, 0.09);
-    --shadow:        0 1px 2px rgba(16,24,40,.04), 0 12px 28px rgba(16,24,40,.07);
-    --ring:          0 0 0 3px rgba(79,70,229,.22);
-
+    --ok:            #1f9d57;
+    --err:           #d23b3b;
+    --err-weak:      rgba(210, 59, 59, 0.08);
+    --wrap: 660px;
     --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
     --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    --ease: cubic-bezier(.22,.61,.36,1);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg:            #0b0d12;
-      --surface:       #14171f;
-      --surface-2:     #1b1f2a;
-      --border:        #262b36;
-      --border-strong: #363c4a;
-      --text:          #e8eaf0;
-      --muted:         #9aa3b2;
-      --faint:         #6b7385;
-      --accent:        #6366f1;
-      --accent-hover:  #7c83ff;
-      --accent-weak:   rgba(124, 131, 255, 0.14);
-      --on-accent:     #ffffff;
-      --ok:            #34d399;
-      --err:           #f87171;
-      --err-weak:      rgba(248, 113, 113, 0.12);
-      --shadow:        0 1px 2px rgba(0,0,0,.3), 0 16px 40px rgba(0,0,0,.45);
-      --ring:          0 0 0 3px rgba(124,131,255,.30);
+      --bg:            #0a0b0f;
+      --bg-2:          #0f1116;
+      --surface:       #111318;
+      --surface-2:     #171a21;
+      --line:          #23262e;
+      --line-strong:   #343943;
+      --ink:           #f2f4f8;
+      --text:          #dfe3ea;
+      --muted:         #9aa2b1;
+      --faint:         #656d7c;
+      --accent:        #6f74ff;
+      --accent-hover:  #8a8eff;
+      --accent-weak:   rgba(111, 116, 255, 0.16);
+      --on-accent:     #0a0b0f;
+      --ok:            #37d17f;
+      --err:           #ff6b6b;
+      --err-weak:      rgba(255, 107, 107, 0.12);
     }
   }
 
   * { box-sizing: border-box; }
   html { -webkit-text-size-adjust: 100%; }
   body {
-    margin: 0;
-    min-height: 100vh;
-    background: var(--bg);
-    color: var(--text);
-    font-family: var(--font);
-    line-height: 1.5;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    padding: 56px 18px 96px;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
+    margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
+    font-family: var(--font); line-height: 1.55;
+    display: flex; flex-direction: column;
+    -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
   }
-  .shell { width: 100%; max-width: 552px; }
+  .wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+  a { color: inherit; }
 
-  /* ---- header ---- */
-  .head { margin: 0 0 26px; padding: 0 2px; }
-  .brand {
-    display: flex; align-items: center; gap: 10px;
-    font-size: 15px; font-weight: 600; color: var(--muted);
-    letter-spacing: .01em; margin-bottom: 18px;
-  }
-  .brand .glyph {
-    width: 26px; height: 26px; border-radius: 7px;
-    background: var(--accent); color: var(--on-accent);
-    display: grid; place-items: center; font-weight: 700; font-size: 15px;
-  }
-  h1 {
-    font-size: 30px; font-weight: 700; letter-spacing: -0.02em;
-    margin: 0 0 8px;
-  }
-  .sub { color: var(--muted); font-size: 15px; margin: 0; max-width: 44ch; }
+  /* entrance animation, staggered */
+  .rise { opacity: 0; transform: translateY(10px); animation: rise .6s var(--ease) forwards; }
+  .d1 { animation-delay: .05s; } .d2 { animation-delay: .13s; }
+  .d3 { animation-delay: .21s; } .d4 { animation-delay: .29s; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
 
-  /* ---- card ---- */
-  .card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 22px;
-    box-shadow: var(--shadow);
-  }
+  /* ============================ HEADER ============================ */
+  .site-head { border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20;
+    background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); }
+  .head-bar { display: flex; align-items: center; justify-content: space-between; height: 62px; }
+  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
+  .mark { width: 26px; height: 26px; background: var(--accent); color: var(--on-accent);
+    display: grid; place-items: center; font-weight: 800; font-size: 15px; }
+  .brand .name { font-weight: 800; font-size: 15px; letter-spacing: .16em; color: var(--ink); }
+  .process { display: none; gap: 22px; font-family: var(--mono); font-size: 11.5px;
+    letter-spacing: .04em; color: var(--faint); }
+  .process b { color: var(--muted); font-weight: 500; }
+  @media (min-width: 620px) { .process { display: flex; } }
 
-  /* ---- segmented mode control ---- */
-  .modes {
-    display: grid; grid-template-columns: 1fr 1fr; gap: 3px;
-    background: var(--surface-2);
-    border-radius: 11px; padding: 3px; margin-bottom: 20px;
-  }
-  .mode-btn {
-    appearance: none; border: 0; background: transparent;
-    color: var(--muted); font-family: inherit; font-size: 14px; font-weight: 600;
-    padding: 9px 12px; border-radius: 8px; cursor: pointer;
-    transition: background .15s, color .15s, box-shadow .15s;
-  }
-  .mode-btn[aria-selected="true"] {
-    background: var(--surface); color: var(--text);
-    box-shadow: 0 1px 2px rgba(16,24,40,.10);
-  }
-  @media (prefers-color-scheme: dark) {
-    .mode-btn[aria-selected="true"] { box-shadow: inset 0 0 0 1px var(--border-strong); }
-  }
-  .mode-btn:hover:not([aria-selected="true"]) { color: var(--text); }
+  /* ============================ MAIN ============================ */
+  main { flex: 1 0 auto; padding: 56px 0 72px; }
+  .hero { margin-bottom: 34px; }
+  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
+  h1 { font-size: clamp(30px, 6vw, 46px); font-weight: 800; letter-spacing: -0.03em;
+    line-height: 1.04; margin: 0 0 14px; color: var(--ink); }
+  .lede { color: var(--muted); font-size: 17px; margin: 0; max-width: 42ch; }
 
-  /* ---- fields ---- */
+  /* ============================ PANEL ============================ */
+  .panel { background: var(--surface); border: 1px solid var(--line); }
+  .panel-body { padding: 26px; }
+
+  /* segmented mode control */
+  .modes { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line-strong);
+    margin-bottom: 22px; }
+  .mode-btn { appearance: none; border: 0; background: var(--surface-2); color: var(--muted);
+    font-family: inherit; font-size: 14px; font-weight: 600; padding: 12px; cursor: pointer;
+    transition: color .18s var(--ease), background .18s var(--ease); position: relative; }
+  .mode-btn + .mode-btn { border-left: 1px solid var(--line-strong); }
+  .mode-btn[aria-selected="true"] { background: var(--surface); color: var(--ink); }
+  .mode-btn[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0;
+    bottom: -1px; height: 2px; background: var(--accent); animation: slideIn .3s var(--ease); }
+  @keyframes slideIn { from { transform: scaleX(0); } }
+  .mode-btn:hover:not([aria-selected="true"]) { color: var(--ink); }
+
+  /* fields */
   .field { margin-bottom: 16px; }
   .field.hidden { display: none; }
-  .label {
-    display: block; font-size: 12px; font-weight: 600;
-    letter-spacing: .02em; color: var(--muted); margin-bottom: 7px;
-  }
-  .input, .select {
-    width: 100%; background: var(--surface-2);
-    border: 1px solid var(--border-strong); color: var(--text);
-    font-family: inherit; font-size: 15px; padding: 12px 13px;
-    border-radius: 10px; transition: border-color .15s, box-shadow .15s, background .15s;
-  }
+  .field.reveal { animation: reveal .32s var(--ease); }
+  @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } }
+  .label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+  .input, .select { width: 100%; background: var(--surface-2); border: 1px solid var(--line-strong);
+    color: var(--text); font-family: inherit; font-size: 15px; padding: 13px 14px;
+    transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease); }
   #url { font-family: var(--mono); font-size: 14px; }
   .input::placeholder { color: var(--faint); }
-  .input:focus, .select:focus {
-    outline: none; border-color: var(--accent); box-shadow: var(--ring);
-    background: var(--surface);
-  }
-  .select {
-    appearance: none; cursor: pointer; padding-right: 38px;
+  .input:focus, .select:focus { outline: none; border-color: var(--accent); background: var(--surface);
+    box-shadow: inset 0 0 0 1px var(--accent); }
+  .select { appearance: none; cursor: pointer; padding-right: 40px;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b7280' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 13px center;
-  }
+    background-repeat: no-repeat; background-position: right 14px center; }
 
-  /* ---- checkbox row ---- */
-  .check {
-    display: flex; align-items: flex-start; gap: 11px; cursor: pointer;
-    font-size: 14px; font-weight: 500; color: var(--text); user-select: none;
-    padding: 12px 13px; border: 1px solid var(--border); border-radius: 10px;
-    background: var(--surface-2); transition: border-color .15s;
-  }
-  .check:hover { border-color: var(--border-strong); }
-  .check input {
-    width: 17px; height: 17px; margin: 1px 0 0; accent-color: var(--accent); cursor: pointer;
-    flex: none;
-  }
-  .check .sub2 { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 3px; }
+  .check { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none;
+    font-size: 14px; font-weight: 600; color: var(--text); padding: 13px 14px;
+    border: 1px solid var(--line-strong); background: var(--surface-2); transition: border-color .18s var(--ease); }
+  .check:hover { border-color: var(--muted); }
+  .check input { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--accent); cursor: pointer; }
+  .check .sub2 { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 4px; }
 
-  #ts { margin-bottom: 16px; }
-  #ts:empty { margin-bottom: 0; }
+  #ts { margin-bottom: 16px; } #ts:empty { margin-bottom: 0; }
 
-  /* ---- submit ---- */
-  .submit {
-    width: 100%; appearance: none; border: 0;
-    background: var(--accent); color: var(--on-accent);
-    font-family: inherit; font-weight: 600; font-size: 15px;
-    padding: 13px; border-radius: 10px; cursor: pointer;
-    transition: background .15s, opacity .15s, transform .02s;
-  }
+  .submit { width: 100%; appearance: none; border: 0; background: var(--accent); color: var(--on-accent);
+    font-family: inherit; font-weight: 700; font-size: 15px; letter-spacing: .01em; padding: 14px;
+    cursor: pointer; transition: background .18s var(--ease), transform .04s var(--ease); }
   .submit:hover { background: var(--accent-hover); }
   .submit:active { transform: translateY(1px); }
-  .submit:focus-visible { outline: none; box-shadow: var(--ring); }
-  .submit:disabled { opacity: .55; cursor: not-allowed; }
+  .submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .submit:disabled { opacity: .5; cursor: not-allowed; }
+  .hint { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); text-align: center; }
 
-  .hint { margin: 11px 0 0; font-size: 12.5px; color: var(--muted); text-align: center; }
+  /* shared-job banner */
+  .banner { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2);
+    border-left: 2px solid var(--accent); padding: 12px 14px; margin-bottom: 20px;
+    font-size: 13.5px; color: var(--muted); }
+  .banner.hidden { display: none; }
 
-  /* ===================== progress tracker ===================== */
-  .run { margin-top: 24px; }
+  /* ======================= PROGRESS TRACKER ======================= */
+  .run { margin-top: 26px; }
   .run.hidden, .result.hidden, #form.hidden { display: none; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); position: relative; }
+  .steps::before { content: ""; position: absolute; top: 6px; left: 16%; right: 16%;
+    height: 1px; background: var(--line-strong); }
+  .step { text-align: center; position: relative; z-index: 1; }
+  .marker { display: block; width: 13px; height: 13px; margin: 0 auto 11px;
+    background: var(--surface); border: 1px solid var(--line-strong);
+    transition: background .25s var(--ease), border-color .25s var(--ease); }
+  .slabel { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    transition: color .25s var(--ease); }
+  .step.active .marker { border-color: var(--accent); background: var(--accent); animation: pulse 1.7s var(--ease) infinite; }
+  .step.active .slabel { color: var(--accent); }
+  .step.complete .marker { border-color: var(--ok); background: var(--ok); }
+  .step.complete .slabel { color: var(--ink); }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--accent-weak); } 100% { box-shadow: 0 0 0 9px transparent; } }
 
-  .track { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: start; position: relative; }
-  .track::before {
-    content: ""; position: absolute; top: 8px; left: 14%; right: 14%;
-    height: 2px; background: var(--border-strong);
-  }
-  .stage { text-align: center; position: relative; z-index: 1; }
-  .dot {
-    width: 18px; height: 18px; margin: 0 auto 9px; border-radius: 50%;
-    background: var(--surface); border: 2px solid var(--border-strong);
-    transition: background .2s, border-color .2s, box-shadow .2s;
-  }
-  .stage-name {
-    font-size: 11px; font-weight: 600; letter-spacing: .03em; color: var(--muted);
-    transition: color .2s;
-  }
-  .stage.active .dot {
-    border-color: var(--accent); background: var(--accent);
-    animation: pulse 1.6s ease-out infinite;
-  }
-  .stage.active .stage-name { color: var(--accent); }
-  .stage.complete .dot { border-color: var(--ok); background: var(--ok); }
-  .stage.complete .stage-name { color: var(--text); }
-  @keyframes pulse {
-    0%   { box-shadow: 0 0 0 0 var(--accent-weak); }
-    100% { box-shadow: 0 0 0 10px transparent; }
-  }
-  @media (prefers-reduced-motion: reduce) { .stage.active .dot { animation: none; } }
+  .bar { height: 2px; background: var(--line); position: relative; overflow: hidden; margin-top: 20px; }
+  .bar-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--accent); width: 34%; }
+  #run[data-state="queued"] .bar-fill { width: 10%; animation: breathe 1.9s var(--ease) infinite; }
+  #run[data-state="running"] .bar-fill { width: 34%; animation: track 1.5s var(--ease) infinite; }
+  #run[data-state="done"] .bar-fill { width: 100%; background: var(--ok); transition: width .4s var(--ease); }
+  @keyframes track { 0% { left: -34%; } 100% { left: 100%; } }
+  @keyframes breathe { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
 
-  .status {
-    margin-top: 16px; font-size: 14px; color: var(--muted);
-    text-align: center; min-height: 1.4em;
-  }
-  .status .elapsed { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 500; }
+  .status { margin-top: 16px; font-size: 14px; color: var(--muted); text-align: center; min-height: 1.4em; }
+  .status .elapsed { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 4px; }
 
-  /* ===================== result ===================== */
-  .result { margin-top: 22px; }
-  .result-head { display: flex; align-items: center; gap: 8px; font-size: 15px; font-weight: 700; margin: 0 0 14px; }
-  .result-head .tick { color: var(--ok); }
+  /* ============================ RESULT ============================ */
+  .result { margin-top: 24px; animation: reveal .4s var(--ease); }
+  .result-head { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 700;
+    margin: 0 0 15px; color: var(--ink); }
+  .result-head .tick { width: 18px; height: 18px; background: var(--ok); color: var(--on-accent);
+    display: grid; place-items: center; font-size: 12px; }
   .result-head.error { color: var(--err); }
 
-  .dl {
-    display: inline-flex; align-items: center; gap: 9px;
-    background: var(--accent); color: var(--on-accent);
-    font-weight: 600; font-size: 14px; text-decoration: none;
-    padding: 12px 18px; border-radius: 10px; transition: background .15s;
-  }
+  .dl { display: inline-flex; align-items: center; gap: 9px; background: var(--accent); color: var(--on-accent);
+    font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 20px; transition: background .18s var(--ease); }
   .dl:hover { background: var(--accent-hover); }
-  .meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 11px; word-break: break-all; }
+  .meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 12px; word-break: break-all; }
 
-  .transcript {
-    background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px;
-    padding: 15px; max-height: 320px; overflow: auto;
-    font-family: var(--mono); font-size: 13px; line-height: 1.75;
-    white-space: pre-wrap; color: var(--text);
-  }
+  .transcript { background: var(--surface-2); border: 1px solid var(--line); padding: 16px;
+    max-height: 340px; overflow: auto; font-family: var(--mono); font-size: 13px; line-height: 1.8;
+    white-space: pre-wrap; color: var(--text); }
   .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  .ghost {
-    appearance: none; background: var(--surface-2); color: var(--text);
-    border: 1px solid var(--border-strong); font-family: inherit;
-    font-size: 13px; font-weight: 600; padding: 9px 13px; border-radius: 9px;
-    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
-    transition: border-color .15s, background .15s;
-  }
-  .ghost:hover { border-color: var(--muted); }
-  .ghost:focus-visible { outline: none; box-shadow: var(--ring); }
+  .ghost { appearance: none; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong);
+    font-family: inherit; font-size: 13px; font-weight: 600; padding: 10px 14px; cursor: pointer;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+    transition: border-color .18s var(--ease), color .18s var(--ease); }
+  .ghost:hover { border-color: var(--accent); color: var(--accent); }
+  .ghost:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  .errmsg { color: var(--text); font-size: 14.5px; margin: 0 0 15px; }
-  .errbox {
-    background: var(--err-weak); border: 1px solid transparent; border-radius: 10px;
-    padding: 14px 15px; margin-bottom: 15px;
-  }
+  .errbox { background: var(--err-weak); border-left: 2px solid var(--err); padding: 14px 15px; margin-bottom: 16px; }
+  .errmsg { color: var(--text); font-size: 14.5px; margin: 0; }
 
-  .banner {
-    display: flex; gap: 10px; align-items: flex-start;
-    background: var(--surface-2); border: 1px solid var(--border);
-    border-radius: 10px; padding: 12px 14px; margin-bottom: 18px;
-    font-size: 13.5px; color: var(--muted);
-  }
+  /* ============================ FOOTER ============================ */
+  .site-foot { border-top: 1px solid var(--line); flex-shrink: 0; }
+  .foot-grid { display: grid; grid-template-columns: 1fr; gap: 22px; padding: 34px 0; }
+  @media (min-width: 620px) { .foot-grid { grid-template-columns: 1.3fr 1fr; } }
+  .foot-brand { font-weight: 800; letter-spacing: .16em; font-size: 13px; color: var(--ink); margin-bottom: 10px; }
+  .foot p { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 34ch; }
+  .foot-notes { display: flex; flex-direction: column; gap: 9px; }
+  .foot-notes span { display: flex; gap: 9px; align-items: baseline; color: var(--muted); font-size: 13px; }
+  .foot-notes span::before { content: ""; width: 5px; height: 5px; background: var(--accent); flex: none; transform: translateY(3px); }
+  .foot-legal { border-top: 1px solid var(--line); padding: 16px 0; font-family: var(--mono);
+    font-size: 11.5px; letter-spacing: .04em; color: var(--faint); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
-  .foot { margin-top: 24px; text-align: center; font-size: 12px; color: var(--faint); }
-
-  @media (max-width: 460px) {
-    body { padding-top: 40px; }
-    h1 { font-size: 25px; }
-    .card { padding: 18px; }
+  @media (prefers-reduced-motion: reduce) {
+    .rise, .result, .mode-btn[aria-selected="true"]::after, .field.reveal { animation: none; opacity: 1; transform: none; }
+    .step.active .marker, #run .bar-fill { animation: none; }
   }
+  @media (max-width: 460px) { main { padding-top: 40px; } .panel-body { padding: 18px; } }
 </style>
 </head>
 <body>
-  <main class="shell">
-    <header class="head">
-      <div class="brand"><span class="glyph">P</span> Prompter</div>
-      <h1>Fetch &amp; transcribe media</h1>
-      <p class="sub">Paste a link. A remote worker downloads the video — or transcribes it — and hands the result back here.</p>
-    </header>
+  <!-- ============================ HEADER ============================ -->
+  <header class="site-head">
+    <div class="wrap head-bar">
+      <a class="brand" href="./" aria-label="Prompter home">
+        <span class="mark">P</span><span class="name">PROMPTER</span>
+      </a>
+      <nav class="process" aria-label="How it works">
+        <span><b>01</b> Paste link</span>
+        <span><b>02</b> Process</span>
+        <span><b>03</b> Get result</span>
+      </nav>
+    </div>
+  </header>
 
-    <div class="card">
-      <!-- shared-link banner (only shown when opened via ?job=) -->
-      <div class="banner hidden" id="shared-banner">
-        <span>You're viewing a shared job. It keeps checking until it's ready — results are kept for a few days.</span>
-      </div>
-
-      <!-- the input form; hidden when viewing a shared job -->
-      <div id="form">
-        <div class="modes" role="tablist" aria-label="Job type">
-          <button class="mode-btn" id="mode-download" role="tab" aria-selected="true">Download video</button>
-          <button class="mode-btn" id="mode-transcribe" role="tab" aria-selected="false">Transcribe</button>
-        </div>
-
-        <div class="field">
-          <label class="label" for="url">Video link</label>
-          <input class="input" id="url" type="url" inputmode="url" placeholder="https://…" autocomplete="off" spellcheck="false" />
-        </div>
-
-        <!-- quality (download only) -->
-        <div class="field" id="quality-field">
-          <label class="label" for="quality">Quality</label>
-          <select class="select" id="quality">
-            <option value="best">Best available</option>
-            <option value="1080p">1080p</option>
-            <option value="720p" selected>720p</option>
-            <option value="480p">480p</option>
-            <option value="360p">360p</option>
-          </select>
-        </div>
-
-        <!-- diarization (transcribe only) -->
-        <div class="field hidden" id="diarize-field">
-          <label class="check">
-            <input type="checkbox" id="diarize" />
-            <span>Label speakers
-              <span class="sub2">Tags each turn as Speaker 1, Speaker 2, … Adds time to the job.</span>
-            </span>
-          </label>
-        </div>
-
-        <!-- speaker count (transcribe + diarize only) -->
-        <div class="field hidden" id="speakers-field">
-          <label class="label" for="speakers">How many speakers?</label>
-          <input class="input" id="speakers" type="number" min="1" max="20" step="1" value="2" inputmode="numeric" />
-        </div>
-
-        <!-- turnstile widget (rendered only if a site key is configured) -->
-        <div id="ts"></div>
-
-        <button class="submit" id="submit">Download video</button>
-        <p class="hint" id="hint">Jobs take a few minutes — you can leave this tab open. YouTube links aren't supported.</p>
-      </div>
-
-      <!-- progress tracker -->
-      <section class="run hidden" id="run" data-state="queued" aria-live="polite">
-        <div class="track">
-          <div class="stage" id="s-queued"><div class="dot"></div><div class="stage-name">Queued</div></div>
-          <div class="stage" id="s-running"><div class="dot"></div><div class="stage-name">Running</div></div>
-          <div class="stage" id="s-done"><div class="dot"></div><div class="stage-name">Done</div></div>
-        </div>
-        <div class="status" id="status"></div>
+  <!-- ============================ MAIN ============================ -->
+  <main>
+    <div class="wrap">
+      <section class="hero rise d1">
+        <p class="eyebrow">Remote media jobs</p>
+        <h1>Fetch and transcribe<br>any media link.</h1>
+        <p class="lede">Paste a link. A remote worker downloads the video, or transcribes it with speaker labels, and hands the result back to this page.</p>
       </section>
 
-      <!-- result -->
-      <section class="result hidden" id="result"></section>
-    </div>
+      <div class="panel rise d2">
+        <div class="panel-body">
+          <!-- shared-link banner (only shown when opened via ?job=) -->
+          <div class="banner hidden" id="shared-banner">
+            <span>You are viewing a shared job. It keeps checking until the result is ready. Results are kept for a few days.</span>
+          </div>
 
-    <p class="foot">Runs on GitHub Actions</p>
+          <div id="form">
+            <div class="modes" role="tablist" aria-label="Job type">
+              <button class="mode-btn" id="mode-download" role="tab" aria-selected="true">Download video</button>
+              <button class="mode-btn" id="mode-transcribe" role="tab" aria-selected="false">Transcribe</button>
+            </div>
+
+            <div class="field">
+              <label class="label" for="url">Video link</label>
+              <input class="input" id="url" type="url" inputmode="url" placeholder="https://" autocomplete="off" spellcheck="false" />
+            </div>
+
+            <div class="field" id="quality-field">
+              <label class="label" for="quality">Quality</label>
+              <select class="select" id="quality">
+                <option value="best">Best available</option>
+                <option value="1080p">1080p</option>
+                <option value="720p" selected>720p</option>
+                <option value="480p">480p</option>
+                <option value="360p">360p</option>
+              </select>
+            </div>
+
+            <div class="field hidden" id="diarize-field">
+              <label class="check">
+                <input type="checkbox" id="diarize" />
+                <span>Label speakers
+                  <span class="sub2">Tags each turn as Speaker 1, Speaker 2, and so on. Adds time to the job.</span>
+                </span>
+              </label>
+            </div>
+
+            <div class="field hidden" id="speakers-field">
+              <label class="label" for="speakers">How many speakers?</label>
+              <input class="input" id="speakers" type="number" min="1" max="20" step="1" value="2" inputmode="numeric" />
+            </div>
+
+            <div id="ts"></div>
+
+            <button class="submit" id="submit">Download video</button>
+            <p class="hint" id="hint">Jobs take a few minutes. You can leave this tab open. YouTube links are not supported.</p>
+          </div>
+
+          <!-- progress tracker -->
+          <section class="run hidden" id="run" data-state="queued" aria-live="polite">
+            <div class="steps">
+              <div class="step" id="s-queued"><span class="marker"></span><span class="slabel">Queued</span></div>
+              <div class="step" id="s-running"><span class="marker"></span><span class="slabel">Running</span></div>
+              <div class="step" id="s-done"><span class="marker"></span><span class="slabel">Done</span></div>
+            </div>
+            <div class="bar"><span class="bar-fill"></span></div>
+            <p class="status" id="status"><span id="status-msg"></span><span class="elapsed" id="elapsed"></span></p>
+          </section>
+
+          <!-- result -->
+          <section class="result hidden" id="result"></section>
+        </div>
+      </div>
+    </div>
   </main>
+
+  <!-- ============================ FOOTER ============================ -->
+  <footer class="site-foot">
+    <div class="wrap">
+      <div class="foot-grid">
+        <div>
+          <div class="foot-brand">PROMPTER</div>
+          <p>A free, no login tool. Downloading and transcription run on GitHub Actions, so nothing runs on a server of your own.</p>
+        </div>
+        <div class="foot-notes">
+          <span>Video downloads and audio transcripts, with optional speaker labels.</span>
+          <span>Result links are shareable and kept for a few days.</span>
+          <span>YouTube links are not supported.</span>
+        </div>
+      </div>
+      <div class="foot-legal">
+        <span>Prompter</span>
+        <span>Runs on GitHub Actions</span>
+      </div>
+    </div>
+  </footer>
 
 <script>
   /* ============================ CONFIG ============================ */
   // 1) Your deployed Cloudflare Worker URL (no trailing slash):
   const WORKER_URL = "https://yt-actions-relay.yt-actions-relay.workers.dev";
   // 2) Cloudflare Turnstile site key. This and TURNSTILE_SECRET on the Worker are a
-  //    pair — and the failure modes are NOT symmetric:
+  //    pair, and the failure modes are NOT symmetric:
   //      site key set, no Worker secret  -> widget runs, Worker skips the check (safe)
   //      Worker secret set, no site key  -> every request 403s (site is dead)
-  //    So always set this FIRST, ship it, then `wrangler secret put TURNSTILE_SECRET`.
+  //    So always set this FIRST, ship it, then run wrangler secret put TURNSTILE_SECRET.
   //    Leave "" to disable the bot check entirely.
   const TURNSTILE_SITE_KEY = "0x4AAAAAAD9cl1oEoCuNjr3Y";
   /* ================================================================ */
 
-  const POLL_MS = 5000;
-  const MAX_POLLS = 480;          // ~40 min of auto-polling before pausing
+  const POLL_MS = 30000;          // 30s between status calls, to spare the GitHub API
+  const FIRST_POLL_MS = 2500;     // one quick check so queued -> running shows promptly
+  const MAX_POLLS = 80;           // ~40 min of auto-polling before offering "keep checking"
   const MAX_SPEAKERS = 20;        // keep in sync with worker.js and transcribe.py
-  const SHARED_QUEUED_GIVEUP = 10; // shared link stuck 'queued' this many polls => not found
+  const SHARED_QUEUED_GIVEUP = 4; // a shared link stuck "queued" this many polls => not found
 
-  // Live-stage labels the workflow reports via the release notes.
   const STAGE_LABELS = {
-    preparing:    "Preparing…",
-    downloading:  "Downloading media…",
-    transcribing: "Transcribing…",
-    uploading:    "Uploading result…",
+    preparing:    "Preparing the job.",
+    downloading:  "Downloading media.",
+    transcribing: "Transcribing audio.",
+    uploading:    "Uploading the result.",
   };
 
   const el = (id) => document.getElementById(id);
@@ -386,21 +381,23 @@
   let turnstileToken = "";
   let turnstileWidgetId = null;
   let poller = null;
+  let ticker = null;
+  let tickStart = 0;
   let currentJobId = null;
   let sharedMode = false;
   let queuedStreak = 0;
 
   /* ---- YouTube: unsupported, on purpose ----
      YouTube blocks the datacenter IPs the runners come from, and no yt-dlp option
-     fixes that — cookies and PO tokens buy account access, not IP reputation. So the
-     job can only fail. Say so up front instead of spending 10 minutes to fail.
-     The Worker rejects these too; this layer just saves the round trip. */
+     fixes that. Cookies and PO tokens buy account access, not IP reputation, so the
+     job can only fail. Say so up front. The Worker rejects these too; this just
+     saves the round trip. */
   const YOUTUBE_HOSTS = ["youtube.com", "youtu.be", "youtube-nocookie.com"];
   const YOUTUBE_MESSAGE =
-    "YouTube isn't supported: it blocks the datacenter IPs this tool runs on, so the " +
+    "YouTube is not supported. It blocks the datacenter IPs this tool runs on, so the " +
     "job would always fail. Links from most other sites work.";
 
-  // Suffix match on a dot boundary — a plain includes("youtube.com") would also match
+  // Suffix match on a dot boundary. A plain includes("youtube.com") would also match
   // notyoutube.com and youtube.com.attacker.net.
   function isYouTubeUrl(u) {
     let host;
@@ -409,38 +406,36 @@
   }
 
   /* ---- Turnstile ----
-     Solved on submit, not on page load. A Turnstile token expires ~5 minutes after
-     it's issued and is single-use, so a load-time token is often dead by the time
-     someone has pasted a link — and because the widget is invisible, there's nothing
-     to click to fix it. `execution: "execute"` defers the challenge until we ask. */
+     Solved on submit, not on page load. A token expires ~5 minutes after it is issued
+     and is single use, so a load-time token is often dead by the time someone has
+     pasted a link, and the invisible widget gives nothing to click. execution:"execute"
+     defers the challenge until getTurnstileToken() asks for it. */
   let tokenWaiters = [];
   function settleWaiters(err, token) {
-    const waiting = tokenWaiters;
-    tokenWaiters = [];
+    const waiting = tokenWaiters; tokenWaiters = [];
     waiting.forEach((w) => (err ? w.reject(err) : w.resolve(token)));
   }
   window.onTurnstileLoad = function () {
     if (!TURNSTILE_SITE_KEY) return;
     turnstileWidgetId = window.turnstile.render("#ts", {
       sitekey: TURNSTILE_SITE_KEY,
-      theme: "auto",                   // follow the page's light/dark theme
-      appearance: "interaction-only",  // invisible unless this visitor needs a challenge
-      execution: "execute",            // don't solve until getTurnstileToken() runs
+      theme: "auto",
+      appearance: "interaction-only",
+      execution: "execute",
       callback: (t) => { turnstileToken = t; settleWaiters(null, t); },
       "expired-callback": () => { turnstileToken = ""; },
       "error-callback": () => {
         turnstileToken = "";
-        settleWaiters(new Error("The verification check couldn't run. Reload the page and try again."));
+        settleWaiters(new Error("The verification check could not run. Reload the page and try again."));
         return true;
       },
     });
   };
-  // Resolves to "" when Turnstile is disabled, so callers need no special case.
   function getTurnstileToken() {
     if (!TURNSTILE_SITE_KEY) return Promise.resolve("");
     if (turnstileToken) return Promise.resolve(turnstileToken);
     if (turnstileWidgetId === null || !window.turnstile)
-      return Promise.reject(new Error("The verification check didn't load. Allow challenges.cloudflare.com, then reload."));
+      return Promise.reject(new Error("The verification check did not load. Allow challenges.cloudflare.com, then reload."));
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => settleWaiters(new Error("Verification timed out. Try again.")), 20000);
       const done = (fn) => (v) => { clearTimeout(timer); fn(v); };
@@ -450,6 +445,7 @@
   }
 
   /* ---- mode switch ---- */
+  function reveal(node) { node.classList.remove("reveal"); void node.offsetWidth; node.classList.add("reveal"); }
   function syncFields() {
     const dl = mode === "download";
     el("quality-field").classList.toggle("hidden", !dl);
@@ -466,7 +462,7 @@
   }
   el("mode-download").addEventListener("click", () => setMode("download"));
   el("mode-transcribe").addEventListener("click", () => setMode("transcribe"));
-  el("diarize").addEventListener("change", syncFields);
+  el("diarize").addEventListener("change", () => { syncFields(); if (el("diarize").checked) reveal(el("speakers-field")); });
 
   /* ---- tracker helpers ---- */
   function setStage(state) {
@@ -491,32 +487,25 @@
     const mb = bytes / 1e6;
     return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1e3))} KB`;
   }
+  // A 1s local ticker keeps the elapsed time alive while status calls stay at 30s.
+  function startTicker(startedAt) { tickStart = startedAt; stopTicker(); updateElapsed(); ticker = setInterval(updateElapsed, 1000); }
+  function stopTicker() { if (ticker) { clearInterval(ticker); ticker = null; } }
+  function updateElapsed() { const e = el("elapsed"); if (e) e.textContent = fmtElapsed(Math.round((Date.now() - tickStart) / 1000)); }
 
   /* ---- shareable links ---- */
-  function jobUrl(id) {
-    return `${location.origin}${location.pathname}?job=${encodeURIComponent(id)}`;
-  }
-  function setUrlToJob(id) {
-    // replaceState (not pushState) so the back button isn't cluttered with poll states.
-    try { history.replaceState(null, "", jobUrl(id)); } catch { /* file:// etc. */ }
-  }
+  function jobUrl(id) { return `${location.origin}${location.pathname}?job=${encodeURIComponent(id)}`; }
+  function setUrlToJob(id) { try { history.replaceState(null, "", jobUrl(id)); } catch {} }
   function copyToClipboard(text, btn) {
     const label = btn.textContent;
     navigator.clipboard.writeText(text).then(() => {
-      btn.textContent = "Copied";
-      setTimeout(() => (btn.textContent = label), 1500);
-    }).catch(() => flashHint("Couldn't copy — copy the address bar instead."));
+      btn.textContent = "Copied"; setTimeout(() => (btn.textContent = label), 1500);
+    }).catch(() => flashHint("Could not copy. Copy the address bar instead."));
   }
-  // Wires any [data-copy-link] / [data-copy-text] / [data-new-job] buttons in a container.
   function wireActions(box) {
-    box.querySelectorAll("[data-copy-link]").forEach((b) =>
-      b.addEventListener("click", () => copyToClipboard(jobUrl(currentJobId), b)));
-    box.querySelectorAll("[data-new-job]").forEach((b) =>
-      b.addEventListener("click", newJob));
+    box.querySelectorAll("[data-copy-link]").forEach((b) => b.addEventListener("click", () => copyToClipboard(jobUrl(currentJobId), b)));
+    box.querySelectorAll("[data-new-job]").forEach((b) => b.addEventListener("click", newJob));
   }
-  function shareButton() {
-    return currentJobId ? `<button class="ghost" data-copy-link>Copy link to this job</button>` : "";
-  }
+  function shareButton() { return currentJobId ? `<button class="ghost" data-copy-link>Copy link to this job</button>` : ""; }
 
   /* ---- submit / start a job ---- */
   el("submit").addEventListener("click", start);
@@ -527,7 +516,7 @@
     if (!/^https?:\/\//.test(url)) { flashHint("Enter a link starting with http:// or https://"); return; }
     if (isYouTubeUrl(url)) { showUnsupported(YOUTUBE_MESSAGE); return; }
 
-    // Validate before touching Turnstile: tokens are single-use, so failing after the
+    // Validate before touching Turnstile: tokens are single use, so failing after the
     // challenge would burn one and force the next attempt to solve a fresh challenge.
     const wantDiarize = mode === "transcribe" && el("diarize").checked;
     let speakers = 0;
@@ -543,17 +532,12 @@
     el("submit").disabled = true;
 
     let token;
-    try {
-      token = await getTurnstileToken();
-    } catch (err) {
-      flashHint(err.message);
-      el("submit").disabled = false;
-      return;
-    }
+    try { token = await getTurnstileToken(); }
+    catch (err) { flashHint(err.message); el("submit").disabled = false; return; }
 
     el("run").classList.remove("hidden");
     setStage("queued");
-    el("status").textContent = "Waiting for a runner to pick up the job…";
+    el("status-msg").textContent = "Waiting for a runner to pick up the job.";
 
     const body = { url, mode, turnstileToken: token };
     if (mode === "download") body.quality = el("quality").value;
@@ -562,74 +546,63 @@
     let data;
     try {
       const r = await fetch(`${WORKER_URL}/trigger`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       data = await r.json();
-      if (!r.ok) throw new Error(data.error || "Couldn't start the job.");
+      if (!r.ok) throw new Error(data.error || "Could not start the job.");
     } catch (err) {
-      showError(err.message || "Couldn't reach the server.");
-      el("submit").disabled = false;
-      resetTurnstile();
-      return;
+      showError(err.message || "Could not reach the server.");
+      el("submit").disabled = false; resetTurnstile(); return;
     }
 
     resetTurnstile();
     currentJobId = data.job_id;
     mode = data.mode || mode;
-    setUrlToJob(currentJobId);           // page is now bookmarkable / shareable
+    setUrlToJob(currentJobId);
     queuedStreak = 0;
-    track(currentJobId, Date.now(), 0);
+    startTicker(Date.now());
+    track(currentJobId, 0);
   }
 
-  /* ---- polling / tracking (works for both fresh and shared jobs) ---- */
-  function track(jobId, startedAt, attempts) {
+  /* ---- polling / tracking (fresh and shared jobs) ---- */
+  function track(jobId, attempts) {
     clearTimeout(poller);
+    const delay = attempts === 0 ? (sharedMode ? 800 : FIRST_POLL_MS) : POLL_MS;
     poller = setTimeout(async () => {
       let data;
       try {
         const r = await fetch(`${WORKER_URL}/status?job_id=${encodeURIComponent(jobId)}`);
         data = await r.json();
-      } catch {
-        data = { status: "running" }; // transient network blip — keep waiting
-      }
+      } catch { data = { status: "running" }; }
 
-      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      if (data.status === "done") { setStage("done"); stopTicker(); el("status-msg").textContent = ""; el("elapsed").textContent = ""; showResult(data); finishInput(); return; }
+      if (data.status === "error") { stopTicker(); showError(data.message || "The job failed."); finishInput(); return; }
 
-      if (data.status === "done") { setStage("done"); el("status").textContent = ""; showResult(data); finishInput(); return; }
-      if (data.status === "error") { showError(data.message || "The job failed."); finishInput(); return; }
-
-      // A shared link pointing at an expired/unknown job just 404s forever as "queued".
-      // Give it a short grace period (a genuinely new job creates its release quickly),
-      // then say so instead of spinning indefinitely.
       queuedStreak = data.status === "queued" ? queuedStreak + 1 : 0;
       if (sharedMode && queuedStreak >= SHARED_QUEUED_GIVEUP) {
-        showError("We couldn't find this job. It may still be starting, or it may have expired (results are kept for a few days).", true);
+        stopTicker();
+        showError("We could not find this job. It may still be starting, or it may have expired. Results are kept for a few days.", true);
         return;
       }
 
       setStage(data.status === "running" ? "running" : "queued");
-      let msg = data.status === "running"
-        ? (STAGE_LABELS[data.stage] || "Working on it…")
-        : "Waiting for a runner…";
-      // Elapsed is meaningless for a shared link opened long after the job started.
-      el("status").innerHTML = sharedMode ? msg : `${msg} <span class="elapsed">${fmtElapsed(elapsed)}</span>`;
+      el("status-msg").textContent = data.status === "running"
+        ? (STAGE_LABELS[data.stage] || "Working on it.")
+        : "Waiting for a runner.";
 
       if (attempts + 1 >= MAX_POLLS) {
-        el("status").innerHTML = `Still working — remote jobs can take a while. <button class="ghost" id="keep">Keep checking</button>`;
-        el("keep").addEventListener("click", () => track(jobId, startedAt, 0));
+        stopTicker();
+        el("status").innerHTML = `Still working. Remote jobs can take a while. <button class="ghost" id="keep">Keep checking</button>`;
+        el("keep").addEventListener("click", () => { if (!sharedMode) startTicker(tickStart); track(jobId, 0); });
         return;
       }
-      track(jobId, startedAt, attempts + 1);
-    }, attempts === 0 ? (sharedMode ? 300 : 1500) : POLL_MS);
+      track(jobId, attempts + 1);
+    }, delay);
   }
 
   function finishInput() { if (!sharedMode) el("submit").disabled = false; }
 
   /* ---- result rendering ---- */
-  // Prefer the mode the Worker reports; fall back to the in-page mode, then infer from
-  // the files (a shared link may arrive with neither).
   function resolveMode(data) {
     if (data.mode === "download" || data.mode === "transcribe") return data.mode;
     const files = data.files || [];
@@ -646,29 +619,28 @@
     if (resolved === "download") {
       const f = files[0];
       box.innerHTML =
-        `<p class="result-head"><span class="tick">✓</span> Video ready</p>` +
+        `<p class="result-head"><span class="tick">&#10003;</span> Video ready</p>` +
         (f
           ? `<a class="dl" href="${f.url}" target="_blank" rel="noopener" download>Download file</a>
-             <div class="meta">${escapeHtml(f.name)} · ${fmtSize(f.size)}</div>
+             <div class="meta">${escapeHtml(f.name)} &middot; ${fmtSize(f.size)}</div>
              <div class="row">${shareButton()}<button class="ghost" data-new-job>New job</button></div>`
-          : `<p class="errmsg">The file wasn't found. Try again.</p>
+          : `<p class="errmsg">The file was not found. Try again.</p>
              <div class="row"><button class="ghost" data-new-job>New job</button></div>`);
       wireActions(box);
       return;
     }
 
-    // transcribe — diarization produces up to four files (plain + labelled, .txt + .srt).
+    // transcribe, up to four files (plain and labelled, .txt and .srt)
     const isDia = (f) => /\.diarized\.(txt|srt)$/i.test(f.name);
     const byExt = (ext) => files.filter((f) => f.name.toLowerCase().endsWith(ext));
     const txts = byExt(".txt"), srts = byExt(".srt");
     const diaTxt = txts.find(isDia), plainTxt = txts.find((f) => !isDia(f));
     const diaSrt = srts.find(isDia), plainSrt = srts.find((f) => !isDia(f));
-    const link = (f, text) =>
-      f ? `<a class="ghost" href="${f.url}" target="_blank" rel="noopener" download>${text}</a>` : "";
+    const link = (f, text) => f ? `<a class="ghost" href="${f.url}" target="_blank" rel="noopener" download>${text}</a>` : "";
 
     const text = data.transcript || "";
     box.innerHTML =
-      `<p class="result-head"><span class="tick">✓</span> ${diaTxt ? "Speaker-labelled transcript ready" : "Transcript ready"}</p>` +
+      `<p class="result-head"><span class="tick">&#10003;</span> ${diaTxt ? "Speaker-labelled transcript ready" : "Transcript ready"}</p>` +
       `<div class="transcript" id="tx">${escapeHtml(text) || "(empty transcript)"}</div>` +
       `<div class="row">
          <button class="ghost" id="copy">Copy text</button>
@@ -681,27 +653,24 @@
     wireActions(box);
   }
 
-  // Not a failure — a rejected input. No "try again", since retrying can't help.
   function showUnsupported(message) {
-    clearTimeout(poller);
+    clearTimeout(poller); stopTicker();
     el("run").classList.add("hidden");
     const box = el("result");
     box.classList.remove("hidden");
-    box.innerHTML =
-      `<p class="result-head error">Not supported</p>` +
-      `<div class="errbox"><p class="errmsg" style="margin:0">${escapeHtml(message)}</p></div>`;
+    box.innerHTML = `<p class="result-head error">Not supported</p><div class="errbox"><p class="errmsg">${escapeHtml(message)}</p></div>`;
   }
 
   function showError(message, hideTracker) {
-    clearTimeout(poller);
+    clearTimeout(poller); stopTicker();
     if (hideTracker) el("run").classList.add("hidden");
-    else setStage(el("run").dataset.state); // freeze current stage
-    el("status").textContent = "";
+    else setStage(el("run").dataset.state);
+    el("status-msg").textContent = ""; el("elapsed").textContent = "";
     const box = el("result");
     box.classList.remove("hidden");
     box.innerHTML =
       `<p class="result-head error">Something went wrong</p>` +
-      `<div class="errbox"><p class="errmsg" style="margin:0">${escapeHtml(message)}</p></div>` +
+      `<div class="errbox"><p class="errmsg">${escapeHtml(message)}</p></div>` +
       `<div class="row"><button class="ghost" data-new-job>${sharedMode ? "Start a job" : "Try again"}</button></div>`;
     wireActions(box);
     finishInput();
@@ -709,10 +678,8 @@
 
   /* ---- reset to a fresh form ---- */
   function newJob() {
-    clearTimeout(poller);
-    currentJobId = null;
-    sharedMode = false;
-    queuedStreak = 0;
+    clearTimeout(poller); stopTicker();
+    currentJobId = null; sharedMode = false; queuedStreak = 0;
     try { history.replaceState(null, "", location.pathname); } catch {}
     el("shared-banner").classList.add("hidden");
     el("form").classList.remove("hidden");
@@ -724,19 +691,14 @@
 
   /* ---- small utils ---- */
   function resetResult() { const b = el("result"); b.classList.add("hidden"); b.innerHTML = ""; }
-  function resetTurnstile() {
-    turnstileToken = "";
-    if (turnstileWidgetId !== null && window.turnstile) window.turnstile.reset(turnstileWidgetId);
-  }
+  function resetTurnstile() { turnstileToken = ""; if (turnstileWidgetId !== null && window.turnstile) window.turnstile.reset(turnstileWidgetId); }
   function flashHint(text) {
-    const h = el("hint");
-    const prev = h.textContent;
+    const h = el("hint"); const prev = h.textContent;
     h.textContent = text; h.style.color = "var(--err)";
     setTimeout(() => { h.textContent = prev; h.style.color = ""; }, 2600);
   }
   function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
   /* ---- init: fresh form, or resume a shared ?job= link ---- */
@@ -744,14 +706,13 @@
     setMode("download");
     const id = new URLSearchParams(location.search).get("job");
     if (id && /^[A-Za-z0-9-]+$/.test(id)) {
-      sharedMode = true;
-      currentJobId = id;
+      sharedMode = true; currentJobId = id;
       el("form").classList.add("hidden");
       el("shared-banner").classList.remove("hidden");
       el("run").classList.remove("hidden");
       setStage("queued");
-      el("status").textContent = "Loading this job…";
-      track(id, Date.now(), 0);
+      el("status-msg").textContent = "Loading this job.";
+      track(id, 0);
     }
   }
   init();

@@ -3,7 +3,7 @@
 optionally labelling each turn with a speaker (diarization via sherpa-onnx).
 
 Always writes <name>.txt and <name>.srt into --out-dir. With --diarize it *additionally*
-writes <name>.diarized.txt and <name>.diarized.srt — the plain transcript is never
+writes <name>.diarized.txt and <name>.diarized.srt - the plain transcript is never
 replaced, so a diarization failure can't cost you the transcript.
 
 Pass EITHER --input (a specific file) OR --input-dir (a folder; the largest media
@@ -30,7 +30,7 @@ MEDIA_EXTS = {
 }
 
 # sherpa-onnx diarization models. NOTE: "recongition" below is a real typo in the
-# upstream release tag — do not "fix" it or the download 404s.
+# upstream release tag - do not "fix" it or the download 404s.
 SEG_URL = (
     "https://github.com/k2-fsa/sherpa-onnx/releases/download/"
     "speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2"
@@ -125,7 +125,7 @@ def ensure_diarization_models(models_dir: Path):
     for p in (seg, emb):
         if not p.exists():
             report_failure(
-                "Couldn't fetch the speaker-labelling models — try again, "
+                "Couldn't fetch the speaker-labelling models. Try again, "
                 "or run without 'Label speakers'.", code=3
             )
     return seg, emb
@@ -300,6 +300,6 @@ if __name__ == "__main__":
         main()
     except SystemExit:
         raise  # report_failure / argparse already set a reason + exit code
-    except Exception as e:  # noqa: BLE001 — surface a clean reason, not a traceback
+    except Exception as e:  # noqa: BLE001 - surface a clean reason, not a traceback
         first = str(e).strip().splitlines()[0] if str(e).strip() else e.__class__.__name__
         report_failure(f"Couldn't process the audio: {first[:180]}")

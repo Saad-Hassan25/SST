@@ -3,7 +3,7 @@
 
 Prints ONLY the final file path to stdout; all human-readable logs go to stderr.
 The path on stdout is for local/manual runs. Do NOT capture it in the workflow with
-`AUDIO=$(python fetch.py ...)` — long video titles overflowed the shell argument
+`AUDIO=$(python fetch.py ...)` - long video titles overflowed the shell argument
 limit ("Argument list too long"). The pipeline hands off through a folder instead:
 `fetch.py --out-dir work` then `transcribe.py --input-dir work`.
 
@@ -14,7 +14,7 @@ a generic "job failed". See classify_error() for the mapping.
 Optional environment variables (all no-ops if unset) let the workflow reach sites that
 block datacenter IPs, WITHOUT editing this file:
   COOKIES_FILE         path to a Netscape cookies.txt (account-gated content on non-
-                       YouTube sites; does NOT unblock YouTube — that's an IP problem)
+                       YouTube sites; does NOT unblock YouTube - that's an IP problem)
   YTDLP_PROXY          proxy URL, e.g. http://user:pass@host:port
   YTDLP_PLAYER_CLIENT  comma-separated yt-dlp player clients to try, e.g. "tv,ios"
 """
@@ -48,12 +48,12 @@ ERROR_SIGNS = [
     ("confirm your age",                    "This video is age-restricted and needs a signed-in account."),
     ("age-restricted",                      "This video is age-restricted and needs a signed-in account."),
     ("inappropriate for some users",        "This video is age-restricted and needs a signed-in account."),
-    ("requested format is not available",   "That quality isn't available for this video — try 'Best available'."),
-    ("requested format not available",      "That quality isn't available for this video — try 'Best available'."),
+    ("requested format is not available",   "That quality isn't available for this video. Try 'Best available'."),
+    ("requested format not available",      "That quality isn't available for this video. Try 'Best available'."),
     ("not available in your country",       "This video is blocked in the server's region."),
     ("geo restriction",                     "This video is blocked in the server's region."),
     ("geo-restricted",                      "This video is blocked in the server's region."),
-    ("http error 404",                      "The video couldn't be found (404) — check the link."),
+    ("http error 404",                      "The video couldn't be found (404). Check the link."),
     ("http error 403",                      "The site refused access to this video (403)."),
     ("http error 401",                      "This video requires signing in."),
     ("login required",                      "This video requires signing in."),
@@ -61,11 +61,11 @@ ERROR_SIGNS = [
     ("premium",                             "This video requires a premium account."),
     ("unsupported url",                     "This link isn't supported."),
     ("no video formats found",              "There's no downloadable video at that link."),
-    ("unable to extract",                   "Couldn't read a video from that link — it may not be supported."),
+    ("unable to extract",                   "Couldn't read a video from that link. It may not be supported."),
     ("video unavailable",                   "This video is unavailable or has been removed."),
     ("this video is unavailable",           "This video is unavailable or has been removed."),
     ("is no longer available",              "This video is unavailable or has been removed."),
-    ("timed out",                           "The download timed out — try again."),
+    ("timed out",                           "The download timed out. Try again."),
 ]
 
 
@@ -147,7 +147,7 @@ def main():
             "quiet": True,
             "no_warnings": True,
         }
-    else:  # audio-only — smaller/faster; all the transcriber needs
+    else:  # audio-only - smaller/faster; all the transcriber needs
         opts = {
             "format": "bestaudio/best",
             "outtmpl": outtmpl,
@@ -165,7 +165,7 @@ def main():
             info = ydl.extract_info(args.url, download=True)
     except yt_dlp.utils.DownloadError as e:
         report_failure(classify_error(str(e)))
-    except Exception as e:  # noqa: BLE001 — any extractor failure becomes a clean reason
+    except Exception as e:  # noqa: BLE001 - any extractor failure becomes a clean reason
         report_failure(classify_error(str(e)))
 
     dls = info.get("requested_downloads")

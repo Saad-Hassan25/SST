@@ -1,4 +1,4 @@
-// Cloudflare Worker — secure relay between the static GitHub Pages frontend and
+// Cloudflare Worker - secure relay between the static GitHub Pages frontend and
 // GitHub Actions. The GitHub token lives here as a server-side secret and never
 // reaches the browser. Two endpoints:
 //   POST /trigger  -> validates input, fires a repository_dispatch, returns { job_id }
@@ -46,7 +46,7 @@ function isHttpUrl(u) {
 }
 
 // YouTube blocks the datacenter IPs that GitHub Actions runners come from, and no
-// yt-dlp option fixes that — cookies and PO tokens address account access, not IP
+// yt-dlp option fixes that - cookies and PO tokens address account access, not IP
 // reputation. So these jobs can only ever fail. Rejecting them here costs no Actions
 // minutes, spends no rate-limit quota, and gives the user a real reason instead of a
 // generic "job failed" ten minutes later.
@@ -218,7 +218,7 @@ async function handleStatus(request, env) {
   // poll landing mid-upload returned done before the .txt transcript was up.
   const isDone = notes.status === "done" || rawNotes.includes("status: done");
   if (!isDone) {
-    // running — surface the current stage (downloading / transcribing / uploading …)
+    // running - surface the current stage (downloading / transcribing / uploading …)
     return json(env, { status: "running", stage: notes.stage || null, mode });
   }
 
