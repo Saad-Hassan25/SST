@@ -8,6 +8,7 @@
 
 const MODES = new Set(["download", "transcribe"]);
 const QUALITIES = new Set(["best", "1080p", "720p", "480p", "360p"]);
+const MAX_SPEAKERS = 20;   // keep in sync with scripts/transcribe.py
 const GH_API = "https://api.github.com";
 
 function cors(env) {
@@ -103,11 +104,24 @@ async function handleTrigger(request, env) {
     return json(env, { error: "Invalid request." }, 400);
   }
 
-  const { url, mode, quality = "best", turnstileToken } = body || {};
+  const { url, mode, quality = "best", diarize = false, speakers, turnstileToken } = body || {};
   if (!MODES.has(mode)) return json(env, { error: "Pick download or transcribe." }, 400);
   if (!isHttpUrl(url)) return json(env, { error: "Enter a valid video link (http or https)." }, 400);
   if (mode === "download" && !QUALITIES.has(quality))
     return json(env, { error: "Unknown quality option." }, 400);
+  if (isYouTubeUrl(url)) return json(env, { error: YOUTUBE_MESSAGE }, 400);
+
+  // Diarization is transcribe-only. `speakers` ends up as a command argument on the
+  // runner, so it has to be a plain small integer. Number() rather than parseInt():
+  // parseInt("2; rm -rf /") happily returns 2, Number() returns NaN.
+  const wantDiarize = mode === "transcribe" && diarize === true;
+  let speakerCount = 0;
+  if (wantDiarize) {
+    const n = Number(speakers);
+    if (!Number.isInteger(n) || n < 1 || n > MAX_SPEAKERS)
+      return json(env, { error: `Enter a speaker count between 1 and ${MAX_SPEAKERS}.` }, 400);
+    speakerCount = n;
+  }
 
   if (!(await verifyTurnstile(env, turnstileToken, ip)))
     return json(env, { error: "Verification failed. Reload the page and try again." }, 403);
@@ -123,7 +137,14 @@ async function handleTrigger(request, env) {
       headers: ghHeaders(env),
       body: JSON.stringify({
         event_type: mode,
-        client_payload: { url, quality, mode, job_id: jobId },
+        client_payload: {
+          url,
+          quality,
+          mode,
+          job_id: jobId,
+          diarize: wantDiarize,
+          speakers: speakerCount,
+        },
       }),
     }
   );
@@ -170,7 +191,13 @@ async function handleStatus(request, env) {
   // public, so browser_download_url is fetchable server-side without auth (and
   // routing it through the Worker avoids browser CORS on the asset CDN).
   let transcript = null;
-  const txt = files.find((f) => f.name.toLowerCase().endsWith(".txt") && f.name !== "ERROR.txt");
+  // With diarization on, output holds BOTH X.txt and X.diarized.txt. Asset order from
+  // the API isn't guaranteed, so pick the labelled one explicitly rather than taking
+  // whichever .txt happens to come first.
+  const txts = files.filter(
+    (f) => f.name.toLowerCase().endsWith(".txt") && f.name !== "ERROR.txt"
+  );
+  const txt = txts.find((f) => f.name.toLowerCase().endsWith(".diarized.txt")) || txts[0];
   if (txt) {
     const c = await fetch(txt.url);
     if (c.ok) transcript = await c.text();

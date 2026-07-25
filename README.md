@@ -22,6 +22,28 @@ Browser (GitHub Pages)  ──POST /trigger──►  Cloudflare Worker  ──r
 - **Video** comes back as a download link (release asset). **Transcripts** are shown
   inline on the page and offered as `.txt` / `.srt`.
 
+## Transcription & diarization
+
+Transcribe mode always writes `<name>.txt` and `<name>.srt`. Tick **Label speakers** and
+it *additionally* writes `<name>.diarized.txt` and `<name>.diarized.srt`, with every turn
+prefixed `Speaker 1:` / `Speaker 2:` / …
+
+- **The speaker count is required in the UI** (1–20). An exact count is noticeably more
+  accurate than auto-detection. `transcribe.py` still accepts `--speakers 0` to
+  auto-detect for local runs, tuned with `--cluster-threshold`.
+- **The plain transcript is written before diarization starts**, so a diarization failure
+  can't cost you the transcript.
+- **Speaker numbers are arbitrary and per-file.** Diarization works out how many voices
+  there are and when each is speaking — not who they are. "Speaker 1" in two different
+  jobs is not the same person.
+- **Expect roughly double the job time**: a segmentation pass, embedding extraction and
+  clustering on top of transcription, on 2–4 vCPUs.
+- **Overlapping speech is the weak spot** of any clustering diarizer — expect smearing
+  where people talk over each other.
+- Models are pyannote segmentation 3.0 (~7 MB) plus NeMo TitaNet-small embeddings
+  (~40 MB), pulled from sherpa-onnx's GitHub releases — no Hugging Face token and no
+  PyTorch. Cached in `models/` (gitignored) and cached in CI under its own key.
+
 ## Repo layout
 
 ```

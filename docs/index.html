@@ -154,6 +154,30 @@
     cursor: pointer;
   }
 
+  /* ---- checkbox row ---- */
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text);
+    user-select: none;
+  }
+  .check input {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+    margin: 0;
+  }
+  .check .sub {
+    display: block;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
   #ts { margin-bottom: 18px; }
 
   /* ---- submit ---- */
@@ -361,6 +385,23 @@
         </select>
       </div>
 
+      <!-- diarization (transcribe only) -->
+      <div class="field hidden" id="diarize-field">
+        <label class="check">
+          <input type="checkbox" id="diarize" />
+          <span>Label speakers
+            <span class="sub">Tags each turn as Speaker 1, Speaker 2, … Adds time to the job.</span>
+          </span>
+        </label>
+      </div>
+
+      <!-- speaker count (transcribe + diarize only) -->
+      <div class="field hidden" id="speakers-field">
+        <label class="label" for="speakers">How many speakers?</label>
+        <input class="input" id="speakers" type="number" min="1" max="20" step="1"
+               value="2" inputmode="numeric" />
+      </div>
+
       <!-- turnstile widget (rendered only if a site key is configured) -->
       <div id="ts"></div>
 
@@ -401,6 +442,7 @@
 
   const POLL_MS = 5000;
   const MAX_POLLS = 480;          // ~40 min of auto-polling before pausing
+  const MAX_SPEAKERS = 20;        // keep in sync with worker.js and transcribe.py
 
   const el = (id) => document.getElementById(id);
   let mode = "download";
@@ -484,16 +526,26 @@
   }
 
   /* ---- mode switch ---- */
+  // Quality belongs to download; the diarization controls belong to transcribe, and the
+  // speaker count only appears once diarization is actually ticked.
+  function syncFields() {
+    const dl = mode === "download";
+    el("quality-field").classList.toggle("hidden", !dl);
+    el("diarize-field").classList.toggle("hidden", dl);
+    el("speakers-field").classList.toggle("hidden", dl || !el("diarize").checked);
+  }
+
   function setMode(next) {
     mode = next;
     const dl = next === "download";
     el("mode-download").setAttribute("aria-selected", String(dl));
     el("mode-transcribe").setAttribute("aria-selected", String(!dl));
-    el("quality-field").classList.toggle("hidden", !dl);
     el("submit").textContent = dl ? "Download video" : "Get transcript";
+    syncFields();
   }
   el("mode-download").addEventListener("click", () => setMode("download"));
   el("mode-transcribe").addEventListener("click", () => setMode("transcribe"));
+  el("diarize").addEventListener("change", syncFields);
 
   /* ---- tracker helpers ---- */
   function setStage(state) {
@@ -531,6 +583,18 @@
     // Nothing is dispatched, so no tracker — just the explanation.
     if (isYouTubeUrl(url)) { showUnsupported(YOUTUBE_MESSAGE); return; }
 
+    // Validate before touching Turnstile: tokens are single-use, so failing after the
+    // challenge would burn one and make the next attempt solve a fresh challenge.
+    const wantDiarize = mode === "transcribe" && el("diarize").checked;
+    let speakers = 0;
+    if (wantDiarize) {
+      speakers = Number(el("speakers").value);
+      if (!Number.isInteger(speakers) || speakers < 1 || speakers > MAX_SPEAKERS) {
+        flashHint(`Enter a speaker count between 1 and ${MAX_SPEAKERS}.`);
+        return;
+      }
+    }
+
     resetResult();
     el("submit").disabled = true;
 
@@ -551,6 +615,7 @@
 
     const body = { url, mode, turnstileToken: token };
     if (mode === "download") body.quality = el("quality").value;
+    if (wantDiarize) { body.diarize = true; body.speakers = speakers; }
 
     let data;
     try {
@@ -632,17 +697,29 @@
       return;
     }
 
-    // transcribe
-    const txt = files.find((x) => x.name.toLowerCase().endsWith(".txt") && x.name !== "ERROR.txt");
-    const srt = files.find((x) => x.name.toLowerCase().endsWith(".srt"));
+    // transcribe — diarization produces four files (plain + labelled, .txt + .srt).
+    // The Worker already inlines the labelled transcript when one exists; mirror that
+    // preference here, and offer every file instead of showing only the first match.
+    const isDia = (f) => /\.diarized\.(txt|srt)$/i.test(f.name);
+    const byExt = (ext) =>
+      files.filter((f) => f.name.toLowerCase().endsWith(ext) && f.name !== "ERROR.txt");
+    const txts = byExt(".txt"), srts = byExt(".srt");
+    const diaTxt = txts.find(isDia), plainTxt = txts.find((f) => !isDia(f));
+    const diaSrt = srts.find(isDia), plainSrt = srts.find((f) => !isDia(f));
+
+    const link = (f, text) =>
+      f ? `<a class="ghost" href="${f.url}" target="_blank" rel="noopener" download>${text}</a>` : "";
+
     const text = data.transcript || "";
     box.innerHTML =
-      `<p class="result-head">Transcript ready</p>` +
+      `<p class="result-head">${diaTxt ? "Speaker-labelled transcript ready" : "Transcript ready"}</p>` +
       `<div class="transcript" id="tx">${escapeHtml(text) || "(empty transcript)"}</div>` +
       `<div class="row">
          <button class="ghost" id="copy">Copy text</button>
-         ${txt ? `<a class="ghost" href="${txt.url}" target="_blank" rel="noopener" download>Download .txt</a>` : ""}
-         ${srt ? `<a class="ghost" href="${srt.url}" target="_blank" rel="noopener" download>Download .srt</a>` : ""}
+         ${link(diaTxt, "Labelled .txt")}
+         ${link(diaSrt, "Labelled .srt")}
+         ${link(plainTxt, "Plain .txt")}
+         ${link(plainSrt, "Plain .srt")}
        </div>`;
     const copyBtn = el("copy");
     if (copyBtn) copyBtn.addEventListener("click", () => {

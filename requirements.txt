@@ -3,3 +3,6 @@
 onnx-asr[cpu,hub]
 soundfile
 numpy
+# Speaker diarization. Pulls its models from GitHub releases, so unlike pyannote.audio
+# it needs no Hugging Face token and no PyTorch — which is why it's usable in CI.
+sherpa-onnx

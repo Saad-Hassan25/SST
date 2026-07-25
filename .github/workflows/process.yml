@@ -23,13 +23,20 @@ jobs:
       URL: ${{ github.event.client_payload.url }}
       QUALITY: ${{ github.event.client_payload.quality }}
       JOB_ID: ${{ github.event.client_payload.job_id }}
+      DIARIZE: ${{ github.event.client_payload.diarize }}
+      SPEAKERS: ${{ github.event.client_payload.speakers }}
       GH_TOKEN: ${{ github.token }}          # used by the `gh` CLI
       GITHUB_REPOSITORY: ${{ github.repository }}
     steps:
-      - name: Validate job id
+      # The Worker validates these too. Re-checking here is deliberate: both values
+      # come from a caller-supplied payload and end up as command arguments.
+      - name: Validate inputs
         run: |
           if ! echo "$JOB_ID" | grep -qE '^[A-Za-z0-9-]+$'; then
-            echo "Invalid job id"; exit 1
+            echo "::error::Invalid job id"; exit 1
+          fi
+          if [ -n "$SPEAKERS" ] && ! echo "$SPEAKERS" | grep -qE '^[0-9]{1,2}$'; then
+            echo "::error::Invalid speaker count"; exit 1
           fi
 
       - uses: actions/checkout@v4
@@ -108,6 +115,15 @@ jobs:
           path: ~/.cache/huggingface
           key: hf-parakeet-tdt-v3-silero-v1
 
+      # Separate from the Hugging Face cache: these come from sherpa-onnx's GitHub
+      # releases, not HF, so they land in ./models rather than ~/.cache/huggingface.
+      - name: Cache diarization models
+        if: env.DIARIZE == 'true'
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: sherpa-diarization-pyannote3-titanet-small-v1
+
       - name: Install transcription dependencies
         if: env.MODE == 'transcribe'
         run: pip install -r requirements.txt
@@ -120,7 +136,14 @@ jobs:
         if: env.MODE == 'transcribe'
         run: |
           python scripts/fetch.py --mode audio --url "$URL" --out-dir work
-          python scripts/transcribe.py --input-dir work --out-dir output
+          # An array, not a string: unquoted word-splitting is what makes this kind of
+          # conditional-flag plumbing break on empty values.
+          extra=()
+          if [ "$DIARIZE" = "true" ]; then
+            extra=(--diarize --speakers "${SPEAKERS:-0}")
+          fi
+          python scripts/transcribe.py --input-dir work --out-dir output \
+            --models-dir models "${extra[@]}"
 
       - name: Publish results
         run: |

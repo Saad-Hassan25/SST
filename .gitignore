@@ -4,6 +4,8 @@ work/
 downloads/
 *.wav
 __pycache__/
+# Diarization models, downloaded on demand by scripts/transcribe.py (~47 MB).
+models/
 
 # Wrangler local state & account cache — created by `wrangler deploy` / `kv namespace`.
 # Never commit these: the repo is public and they hold account identifiers.
