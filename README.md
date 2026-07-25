@@ -1,9 +1,15 @@
-# Relay — download & transcribe media over GitHub Actions
+# Prompter — download & transcribe media over GitHub Actions
 
 Paste a video link on a static web page; a remote GitHub Actions runner downloads
 the video (at a chosen quality) or transcribes it with **NVIDIA Parakeet TDT**, and
 the result comes back to the page. No server of your own beyond a tiny Cloudflare
 Worker that keeps your GitHub token safe.
+
+The page follows the visitor's light/dark system theme. While a job runs it shows a
+live stage (downloading → transcribing → uploading), and the URL becomes a shareable
+`?job=<id>` permalink you can bookmark or send to someone — reopening it re-polls and
+shows the result. Failures surface the real reason (private video, unavailable,
+members-only, …) rather than a generic error.
 
 ## How it works
 
@@ -16,9 +22,13 @@ Browser (GitHub Pages)  ──POST /trigger──►  Cloudflare Worker  ──r
 
 - The **Worker** is the only thing that talks to the GitHub API. Your token lives
   there as a secret, never in the browser.
-- Each job creates a **Release** tagged `job-<id>`. Its state is the signal the page
-  polls: no release = queued, release with no assets = running, assets present = done,
-  an `ERROR.txt` = failed.
+- Each job creates a **Release** tagged `job-<id>`. Its notes are the status channel the
+  page polls: `status:` is queued (no release) / running / done / error, `stage:` carries
+  the live sub-step, and `mode:` lets a shared `?job=` link render without prior context.
+  **Done is keyed off `status: done` in the notes, written only after every asset is
+  uploaded** — so a poll landing mid-upload never reports a half-finished job.
+- On failure, the scripts write a one-line human reason to `ERROR.txt`; the Worker returns
+  it as the error message the page shows.
 - **Video** comes back as a download link (release asset). **Transcripts** are shown
   inline on the page and offered as `.txt` / `.srt`.
 

@@ -49,14 +49,27 @@ def log(*a):
     print(*a, file=sys.stderr, flush=True)
 
 
+def report_failure(message: str, code: int = 1):
+    """Write a user-facing reason to JOB_ERROR_FILE (if set) and exit non-zero, so the
+    workflow can surface it instead of a generic 'job failed'."""
+    import os
+    log("ERROR:", message)
+    path = os.environ.get("JOB_ERROR_FILE")
+    if path:
+        try:
+            Path(path).write_text(message.strip() + "\n", encoding="utf-8")
+        except OSError:
+            pass
+    sys.exit(code)
+
+
 def find_media_file(directory: Path) -> Path:
     if not directory.is_dir():
         log(f"ERROR: not a directory: {directory}")
         sys.exit(2)
     candidates = [p for p in directory.iterdir() if p.is_file() and p.suffix.lower() in MEDIA_EXTS]
     if not candidates:
-        log(f"ERROR: no media file found in {directory}")
-        sys.exit(2)
+        report_failure("No audio could be extracted from that link.", code=2)
     # the real media is the largest file (ignore any small sidecars)
     return max(candidates, key=lambda p: p.stat().st_size)
 
@@ -111,8 +124,10 @@ def ensure_diarization_models(models_dir: Path):
 
     for p in (seg, emb):
         if not p.exists():
-            log(f"ERROR: diarization model missing after download: {p}")
-            sys.exit(3)
+            report_failure(
+                "Couldn't fetch the speaker-labelling models — try again, "
+                "or run without 'Label speakers'.", code=3
+            )
     return seg, emb
 
 
@@ -281,4 +296,10 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except SystemExit:
+        raise  # report_failure / argparse already set a reason + exit code
+    except Exception as e:  # noqa: BLE001 — surface a clean reason, not a traceback
+        first = str(e).strip().splitlines()[0] if str(e).strip() else e.__class__.__name__
+        report_failure(f"Couldn't process the audio: {first[:180]}")

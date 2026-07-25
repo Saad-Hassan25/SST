@@ -30,6 +30,10 @@ jobs:
     steps:
       # The Worker validates these too. Re-checking here is deliberate: both values
       # come from a caller-supplied payload and end up as command arguments.
+      # Also publish JOB_ERROR_FILE for every later step: fetch.py / transcribe.py write
+      # a one-line user-facing reason there on failure, and "Report failure" turns it
+      # into the ERROR.txt the frontend shows. ($RUNNER_TEMP is a built-in runner var;
+      # the `runner` context is NOT available in a job-level env: block.)
       - name: Validate inputs
         run: |
           if ! echo "$JOB_ID" | grep -qE '^[A-Za-z0-9-]+$'; then
@@ -38,17 +42,20 @@ jobs:
           if [ -n "$SPEAKERS" ] && ! echo "$SPEAKERS" | grep -qE '^[0-9]{1,2}$'; then
             echo "::error::Invalid speaker count"; exit 1
           fi
+          echo "JOB_ERROR_FILE=$RUNNER_TEMP/job_error.txt" >> "$GITHUB_ENV"
 
       - uses: actions/checkout@v4
 
-      # Create the release immediately. Its presence + asset state is how the
-      # frontend tells queued (no release) vs running (release, no assets) vs done.
+      # Create the release immediately. Its notes are the status channel the frontend
+      # polls: `status:` (running/done/error) plus a `stage:` for live progress and the
+      # `mode:` so a shared ?job= link can render without prior context.
       - name: Mark job as running
         run: |
+          notes=$(printf 'status: running\nstage: preparing\nmode: %s' "$MODE")
           gh release create "job-$JOB_ID" \
             --repo "$GITHUB_REPOSITORY" \
             --title "Job $JOB_ID ($MODE)" \
-            --notes "status: running" || echo "release already exists, continuing"
+            --notes "$notes" || echo "release already exists, continuing"
 
       - uses: actions/setup-python@v5
         with:
@@ -60,11 +67,10 @@ jobs:
       - name: Install yt-dlp (latest)
         run: pip install -U yt-dlp
 
-      # Optional anti-bot config for YouTube, which blocks GitHub's datacenter IPs.
-      # Every branch below is a no-op when its secret/variable is unset, and fetch.py
-      # gates on these env vars being present — so an unconfigured repo behaves exactly
-      # as before. Nothing here is ever echoed: GitHub masks the raw secret in logs but
-      # NOT its decoded form.
+      # Optional anti-bot config for sites that block datacenter IPs. Every branch below
+      # is a no-op when its secret/variable is unset, and fetch.py gates on these env
+      # vars being present — so an unconfigured repo behaves exactly as before. Nothing
+      # here is ever echoed: GitHub masks the raw secret in logs but NOT its decoded form.
       - name: Configure yt-dlp network options
         env:
           YT_COOKIES_B64: ${{ secrets.YT_COOKIES_B64 }}
@@ -130,12 +136,25 @@ jobs:
 
       - name: Download video
         if: env.MODE == 'download'
-        run: python scripts/fetch.py --mode video --url "$URL" --quality "$QUALITY" --out-dir output
+        run: |
+          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+            --notes "$(printf 'status: running\nstage: downloading\nmode: %s' "$MODE")" || true
+          python scripts/fetch.py --mode video --url "$URL" --quality "$QUALITY" --out-dir output
 
       - name: Download audio + transcribe
         if: env.MODE == 'transcribe'
         run: |
+          # Update the release notes so the frontend can show the live stage. --notes
+          # replaces the whole body; keep status/mode alongside stage each time.
+          setstage () {
+            gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+              --notes "$(printf 'status: running\nstage: %s\nmode: %s' "$1" "$MODE")" || true
+          }
+
+          setstage downloading
           python scripts/fetch.py --mode audio --url "$URL" --out-dir work
+
+          setstage transcribing
           # An array, not a string: unquoted word-splitting is what makes this kind of
           # conditional-flag plumbing break on empty values.
           extra=()
@@ -154,19 +173,38 @@ jobs:
             safe=$(printf '%s' "$b" | tr -c 'A-Za-z0-9._-' '_')
             if [ "$b" != "$safe" ]; then mv "$f" "$d/$safe"; fi
           done
-          # create-if-missing so upload never fails on a missing release
+
+          # Ensure the release exists (in case "Mark job as running" was skipped) and
+          # flip the stage to uploading — still status:running, so the frontend does
+          # NOT report done until every asset is up (see the loop below).
+          uploading=$(printf 'status: running\nstage: uploading\nmode: %s' "$MODE")
           gh release create "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
-            --title "Job $JOB_ID ($MODE)" --notes "status: done" 2>/dev/null || true
+            --title "Job $JOB_ID ($MODE)" --notes "$uploading" 2>/dev/null \
+            || gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "$uploading" || true
+
           gh release upload "job-$JOB_ID" output/* --repo "$GITHUB_REPOSITORY" --clobber
-          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "status: done"
+
+          # Mark done LAST — this is the authoritative signal the Worker keys on, so it
+          # must land only after all assets are uploaded. Retry so a transient edit
+          # failure doesn't strand the job as "running" forever.
+          done=$(printf 'status: done\nmode: %s' "$MODE")
+          for i in 1 2 3; do
+            gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "$done" && break
+            sleep 2
+          done
 
       # If anything above failed, mark the release so the frontend can show an error
-      # instead of spinning forever.
+      # instead of spinning forever — with the real reason when a script captured one.
       - name: Report failure
         if: failure()
         run: |
-          echo "Job failed. See the Actions logs for details." > ERROR.txt
+          if [ -s "$JOB_ERROR_FILE" ]; then
+            cp "$JOB_ERROR_FILE" ERROR.txt
+          else
+            echo "The job failed. See the Actions logs for details." > ERROR.txt
+          fi
+          notes=$(printf 'status: error\nmode: %s' "$MODE")
           gh release create "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
-            --title "Job $JOB_ID ($MODE)" --notes "status: error" 2>/dev/null || true
+            --title "Job $JOB_ID ($MODE)" --notes "$notes" 2>/dev/null \
+            || gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "$notes" || true
           gh release upload "job-$JOB_ID" ERROR.txt --repo "$GITHUB_REPOSITORY" --clobber || true
-          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" --notes "status: error" || true

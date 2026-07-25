@@ -156,6 +156,24 @@ async function handleTrigger(request, env) {
   return json(env, { job_id: jobId, mode });
 }
 
+// The workflow writes the release notes as `key: value` lines (status / stage / mode).
+// Parse them into an object; unknown or malformed lines are ignored.
+function parseNotes(body) {
+  const out = {};
+  for (const line of (body || "").split("\n")) {
+    const m = line.match(/^\s*([a-z_]+)\s*:\s*(.+?)\s*$/i);
+    if (m) out[m[1].toLowerCase()] = m[2];
+  }
+  return out;
+}
+
+// mode from notes if present, else parsed from the release title "Job <id> (mode)".
+function modeFrom(release, notes) {
+  if (notes.mode && MODES.has(notes.mode)) return notes.mode;
+  const m = (release.name || "").match(/\((download|transcribe)\)\s*$/);
+  return m ? m[1] : null;
+}
+
 async function handleStatus(request, env) {
   const jobId = new URL(request.url).searchParams.get("job_id") || "";
   if (!/^[A-Za-z0-9-]+$/.test(jobId)) return json(env, { error: "Invalid job id." }, 400);
@@ -165,45 +183,63 @@ async function handleStatus(request, env) {
     { headers: ghHeaders(env) }
   );
 
+  // No release yet = the runner hasn't picked the job up.
   if (rel.status === 404) return json(env, { status: "queued" });
   if (!rel.ok) return json(env, { error: "Couldn't check status." }, 502);
 
   const data = await rel.json();
   const assets = data.assets || [];
-  const notes = data.body || "";
+  const rawNotes = data.body || "";
+  const notes = parseNotes(rawNotes);
+  const mode = modeFrom(data, notes);
 
-  const hadError = assets.some((a) => a.name === "ERROR.txt") || notes.includes("status: error");
-  if (hadError)
-    return json(env, {
-      status: "error",
-      message: "The job failed. Try a different link or quality.",
-    });
+  // --- error: an ERROR.txt asset, or notes marked error --------------------
+  const errorAsset = assets.find((a) => a.name === "ERROR.txt");
+  if (errorAsset || notes.status === "error" || rawNotes.includes("status: error")) {
+    let message = "The job failed. Try a different link or quality.";
+    if (errorAsset) {
+      // ERROR.txt holds the concise, user-facing reason our scripts wrote.
+      try {
+        const c = await fetch(errorAsset.browser_download_url);
+        if (c.ok) {
+          const t = (await c.text()).trim();
+          if (t) message = t.slice(0, 500);
+        }
+      } catch {
+        /* fall back to the generic message */
+      }
+    }
+    return json(env, { status: "error", message, mode });
+  }
 
-  if (assets.length === 0) return json(env, { status: "running" });
+  // --- done: authoritative signal is the notes, NOT asset presence ---------
+  // The publish step uploads assets one by one, then marks the notes "done" LAST.
+  // Keying "done" off the notes (not "any asset exists") closes the race where a
+  // poll landing mid-upload returned done before the .txt transcript was up.
+  const isDone = notes.status === "done" || rawNotes.includes("status: done");
+  if (!isDone) {
+    // running — surface the current stage (downloading / transcribing / uploading …)
+    return json(env, { status: "running", stage: notes.stage || null, mode });
+  }
 
-  const files = assets.map((a) => ({
-    name: a.name,
-    size: a.size,
-    url: a.browser_download_url,
-  }));
+  const files = assets
+    .filter((a) => a.name !== "ERROR.txt")
+    .map((a) => ({ name: a.name, size: a.size, url: a.browser_download_url }));
 
   // For transcripts, fetch the .txt so the page can show it inline. The repo is
   // public, so browser_download_url is fetchable server-side without auth (and
   // routing it through the Worker avoids browser CORS on the asset CDN).
+  // With diarization on, output holds BOTH X.txt and X.diarized.txt; asset order from
+  // the API isn't guaranteed, so prefer the labelled one explicitly.
   let transcript = null;
-  // With diarization on, output holds BOTH X.txt and X.diarized.txt. Asset order from
-  // the API isn't guaranteed, so pick the labelled one explicitly rather than taking
-  // whichever .txt happens to come first.
-  const txts = files.filter(
-    (f) => f.name.toLowerCase().endsWith(".txt") && f.name !== "ERROR.txt"
-  );
+  const txts = files.filter((f) => f.name.toLowerCase().endsWith(".txt"));
   const txt = txts.find((f) => f.name.toLowerCase().endsWith(".diarized.txt")) || txts[0];
   if (txt) {
     const c = await fetch(txt.url);
     if (c.ok) transcript = await c.text();
   }
 
-  return json(env, { status: "done", files, transcript });
+  return json(env, { status: "done", files, transcript, mode });
 }
 
 export default {

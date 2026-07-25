@@ -7,11 +7,16 @@ The path on stdout is for local/manual runs. Do NOT capture it in the workflow w
 limit ("Argument list too long"). The pipeline hands off through a folder instead:
 `fetch.py --out-dir work` then `transcribe.py --input-dir work`.
 
-Optional environment variables (all no-ops if unset) let the workflow get past
-datacenter-IP bot checks without changing this file:
-  COOKIES_FILE         path to a Netscape cookies.txt (YouTube "not a bot" fix)
+On failure, a short human-readable reason is written to the file named by the
+JOB_ERROR_FILE env var (if set), so the workflow can surface it to the user instead of
+a generic "job failed". See classify_error() for the mapping.
+
+Optional environment variables (all no-ops if unset) let the workflow reach sites that
+block datacenter IPs, WITHOUT editing this file:
+  COOKIES_FILE         path to a Netscape cookies.txt (account-gated content on non-
+                       YouTube sites; does NOT unblock YouTube — that's an IP problem)
   YTDLP_PROXY          proxy URL, e.g. http://user:pass@host:port
-  YTDLP_PLAYER_CLIENT  comma-separated YouTube player clients to try, e.g. "tv,ios"
+  YTDLP_PLAYER_CLIENT  comma-separated yt-dlp player clients to try, e.g. "tv,ios"
 """
 import argparse
 import os
@@ -31,9 +36,65 @@ QUALITY_PRESETS = {
     "360p":  "bestvideo[height<=360]+bestaudio/best[height<=360]/best",
 }
 
+# Ordered most-specific first: the first pattern found in the error text wins, so a
+# generic "unavailable" must not shadow "private" / "members-only" above it.
+ERROR_SIGNS = [
+    ("sign in to confirm you're not a bot", "This site is blocking automated downloads from this server."),
+    ("this video is private",               "This video is private, so it can't be downloaded."),
+    ("private video",                       "This video is private, so it can't be downloaded."),
+    ("members-only",                        "This is members-only content and needs a subscribed account."),
+    ("available to this channel's members", "This is members-only content and needs a subscribed account."),
+    ("join this channel",                   "This is members-only content and needs a subscribed account."),
+    ("confirm your age",                    "This video is age-restricted and needs a signed-in account."),
+    ("age-restricted",                      "This video is age-restricted and needs a signed-in account."),
+    ("inappropriate for some users",        "This video is age-restricted and needs a signed-in account."),
+    ("requested format is not available",   "That quality isn't available for this video — try 'Best available'."),
+    ("requested format not available",      "That quality isn't available for this video — try 'Best available'."),
+    ("not available in your country",       "This video is blocked in the server's region."),
+    ("geo restriction",                     "This video is blocked in the server's region."),
+    ("geo-restricted",                      "This video is blocked in the server's region."),
+    ("http error 404",                      "The video couldn't be found (404) — check the link."),
+    ("http error 403",                      "The site refused access to this video (403)."),
+    ("http error 401",                      "This video requires signing in."),
+    ("login required",                      "This video requires signing in."),
+    ("requires payment",                    "This video requires a purchase or subscription."),
+    ("premium",                             "This video requires a premium account."),
+    ("unsupported url",                     "This link isn't supported."),
+    ("no video formats found",              "There's no downloadable video at that link."),
+    ("unable to extract",                   "Couldn't read a video from that link — it may not be supported."),
+    ("video unavailable",                   "This video is unavailable or has been removed."),
+    ("this video is unavailable",           "This video is unavailable or has been removed."),
+    ("is no longer available",              "This video is unavailable or has been removed."),
+    ("timed out",                           "The download timed out — try again."),
+]
+
 
 def log(*a):
     print(*a, file=sys.stderr, flush=True)
+
+
+def classify_error(raw: str) -> str:
+    """Map a raw yt-dlp error into one short, user-facing sentence."""
+    low = raw.lower()
+    for needle, message in ERROR_SIGNS:
+        if needle in low:
+            return message
+    # Unknown error: hand back its first line, trimmed, rather than a traceback.
+    first = raw.strip().splitlines()[0] if raw.strip() else "unknown error"
+    first = re.sub(r"^\s*ERROR:\s*", "", first).strip()
+    return f"The download failed: {first[:180]}"
+
+
+def report_failure(message: str, code: int = 1):
+    """Write a user-facing reason to JOB_ERROR_FILE (if set) and exit non-zero."""
+    log("ERROR:", message)
+    path = os.environ.get("JOB_ERROR_FILE")
+    if path:
+        try:
+            Path(path).write_text(message.strip() + "\n", encoding="utf-8")
+        except OSError:
+            pass  # best-effort; the workflow falls back to a generic message
+    sys.exit(code)
 
 
 def is_http_url(u: str) -> bool:
@@ -71,8 +132,7 @@ def main():
 
     # Defense in depth: the Worker already validates, but never trust input.
     if not is_http_url(args.url):
-        log("ERROR: invalid URL")
-        sys.exit(2)
+        report_failure("That doesn't look like a valid link.", code=2)
 
     out = Path(args.out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -100,8 +160,13 @@ def main():
     opts = apply_env_hardening(opts)
 
     log(f"Downloading ({args.mode}, quality={args.quality}) ...")
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(args.url, download=True)
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(args.url, download=True)
+    except yt_dlp.utils.DownloadError as e:
+        report_failure(classify_error(str(e)))
+    except Exception as e:  # noqa: BLE001 — any extractor failure becomes a clean reason
+        report_failure(classify_error(str(e)))
 
     dls = info.get("requested_downloads")
     path = dls[0]["filepath"] if dls else ydl.prepare_filename(info)
