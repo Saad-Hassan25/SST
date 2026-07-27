@@ -104,7 +104,7 @@ async function handleTrigger(request, env) {
     return json(env, { error: "Invalid request." }, 400);
   }
 
-  const { url, mode, quality = "best", diarize = false, speakers, notify = false, email, turnstileToken } = body || {};
+  const { url, mode, quality = "best", diarize = false, speakers, notify = false, email, name, turnstileToken } = body || {};
   if (!MODES.has(mode)) return json(env, { error: "Pick download or transcribe." }, 400);
   if (!isHttpUrl(url)) return json(env, { error: "Enter a valid video link (http or https)." }, 400);
   if (mode === "download" && !QUALITIES.has(quality))
@@ -116,11 +116,17 @@ async function handleTrigger(request, env) {
   // ALLOWED_ORIGIN, never from client input, so this can't be turned into a relay
   // that mails attacker-controlled links to arbitrary people.
   let notifyEmail = null;
+  let jobName = "";
   if (notify === true) {
     const e = typeof email === "string" ? email.trim() : "";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || e.length > 254)
       return json(env, { error: "Enter a valid email address." }, 400);
     notifyEmail = e;
+    // Optional label for the email. Collapse all whitespace (newlines included, so it
+    // can't inject a header when used in the subject) and cap the length. Purely
+    // cosmetic, so a bad value is dropped rather than rejected.
+    if (typeof name === "string")
+      jobName = name.replace(/\s+/g, " ").trim().slice(0, 100);
   }
 
   // Diarization is transcribe-only. `speakers` ends up as a command argument on the
@@ -158,7 +164,8 @@ async function handleTrigger(request, env) {
           speakers: speakerCount,
           // Only present when the user opted into email. `site` is the trusted base
           // for the emailed link; the workflow falls back to a default if it's blank.
-          ...(notifyEmail ? { email: notifyEmail, site: env.ALLOWED_ORIGIN || "" } : {}),
+          // `name` is the optional, sanitized label shown in the email (may be "").
+          ...(notifyEmail ? { email: notifyEmail, site: env.ALLOWED_ORIGIN || "", name: jobName } : {}),
         },
       }),
     }

@@ -31,6 +31,9 @@ jobs:
       # the emailed link always points at the real site and cannot be a phishing link.
       NOTIFY_EMAIL: ${{ github.event.client_payload.email }}
       SITE_URL: ${{ github.event.client_payload.site }}
+      # Optional cosmetic label for the email (already whitespace-collapsed and length-
+      # capped by the Worker). Escaped before it goes into the HTML body.
+      JOB_NAME: ${{ github.event.client_payload.name }}
       GH_TOKEN: ${{ github.token }}          # used by the `gh` CLI
       GITHUB_REPOSITORY: ${{ github.repository }}
     steps:
@@ -222,9 +225,20 @@ jobs:
           link="${base%/}/?job=$JOB_ID"
           if [ "$MODE" = "download" ]; then what="video download"; else what="transcript"; fi
           export EMAIL_TO="$NOTIFY_EMAIL"
-          export EMAIL_SUBJECT="Your Prompter $what is ready"
-          export EMAIL_TEXT="$(printf 'Your %s is ready.\n\nOpen it here:\n%s\n\nThis link stays available for a few days.\n' "$what" "$link")"
-          export EMAIL_HTML="<p>Your $what is ready.</p><p><a href=\"$link\">Open your result</a></p><p style=\"color:#6b7280;font-size:13px\">This link stays available for a few days.</p>"
+          # Optional job name: append to the subject and prepend a "Video:" line. It is
+          # already newline-free (Worker collapsed whitespace), so it is header-safe; the
+          # HTML copy is escaped.
+          if [ -n "$JOB_NAME" ]; then
+            export EMAIL_SUBJECT="Your Prompter $what is ready: $JOB_NAME"
+            text_name="$(printf 'Video: %s\n\n' "$JOB_NAME")"
+            esc_name="$(printf '%s' "$JOB_NAME" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
+            html_name="<p style=\"font-weight:600\">Video: $esc_name</p>"
+          else
+            export EMAIL_SUBJECT="Your Prompter $what is ready"
+            text_name=""; html_name=""
+          fi
+          export EMAIL_TEXT="$(printf '%sYour %s is ready.\n\nOpen it here:\n%s\n\nThis link stays available for a few days.\n' "$text_name" "$what" "$link")"
+          export EMAIL_HTML="${html_name}<p>Your $what is ready.</p><p><a href=\"$link\">Open your result</a></p><p style=\"color:#6b7280;font-size:13px\">This link stays available for a few days.</p>"
           python scripts/send_email.py
 
       # If anything above failed, mark the release so the frontend can show an error
@@ -255,7 +269,15 @@ jobs:
           if [ -s "$JOB_ERROR_FILE" ]; then reason="$(cat "$JOB_ERROR_FILE")"; fi
           esc="$(printf '%s' "$reason" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
           export EMAIL_TO="$NOTIFY_EMAIL"
-          export EMAIL_SUBJECT="Your Prompter job could not be completed"
-          export EMAIL_TEXT="$(printf 'Unfortunately your job did not finish.\n\nReason: %s\n\nYou can try again here:\n%s\n' "$reason" "$link")"
-          export EMAIL_HTML="<p>Unfortunately your job did not finish.</p><p><b>Reason:</b> $esc</p><p><a href=\"$link\">Try again</a></p>"
+          if [ -n "$JOB_NAME" ]; then
+            export EMAIL_SUBJECT="Your Prompter job could not be completed: $JOB_NAME"
+            text_name="$(printf 'Video: %s\n\n' "$JOB_NAME")"
+            esc_name="$(printf '%s' "$JOB_NAME" | sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g')"
+            html_name="<p style=\"font-weight:600\">Video: $esc_name</p>"
+          else
+            export EMAIL_SUBJECT="Your Prompter job could not be completed"
+            text_name=""; html_name=""
+          fi
+          export EMAIL_TEXT="$(printf '%sUnfortunately your job did not finish.\n\nReason: %s\n\nYou can try again here:\n%s\n' "$text_name" "$reason" "$link")"
+          export EMAIL_HTML="${html_name}<p>Unfortunately your job did not finish.</p><p><b>Reason:</b> $esc</p><p><a href=\"$link\">Try again</a></p>"
           python scripts/send_email.py

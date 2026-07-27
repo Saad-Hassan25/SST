@@ -323,6 +323,11 @@
               <input class="input" id="email" type="email" inputmode="email" placeholder="you@example.com" autocomplete="email" spellcheck="false" />
             </div>
 
+            <div class="field hidden" id="name-field">
+              <label class="label" for="jobname">Name this job (optional)</label>
+              <input class="input" id="jobname" type="text" maxlength="100" placeholder="e.g. Team standup, March 3" autocomplete="off" />
+            </div>
+
             <div id="ts"></div>
 
             <button class="submit" id="submit">Download video</button>
@@ -485,7 +490,8 @@
   el("notify").addEventListener("change", () => {
     const on = el("notify").checked;
     el("email-field").classList.toggle("hidden", !on);
-    if (on) { reveal(el("email-field")); el("email").focus(); }
+    el("name-field").classList.toggle("hidden", !on);  // a name is only useful in the email
+    if (on) { reveal(el("email-field")); reveal(el("name-field")); el("email").focus(); }
   });
 
   /* ---- tracker helpers ---- */
@@ -576,7 +582,14 @@
     const body = { url, mode, turnstileToken: token };
     if (mode === "download") body.quality = el("quality").value;
     if (wantDiarize) { body.diarize = true; body.speakers = speakers; }
-    if (wantEmail) { body.notify = true; body.email = email; }
+    if (wantEmail) {
+      body.notify = true;
+      body.email = email;
+      // Optional label for the email. Collapse whitespace/newlines; the Worker
+      // sanitizes again server-side.
+      const name = el("jobname").value.replace(/\s+/g, " ").trim().slice(0, 100);
+      if (name) body.name = name;
+    }
 
     let data;
     try {
@@ -724,6 +737,7 @@
     el("form").classList.remove("hidden");
     el("run").classList.add("hidden");
     el("notice").classList.add("hidden");
+    el("name-field").classList.add("hidden");
     resetResult();
     el("submit").disabled = false;
     el("url").focus();
