@@ -1,3 +1,17 @@
+<!-- Project cover -->
+<p align="center">
+  <img src="./project-cover.svg" alt="Prompter — Media Download & Transcription cover" width="100%" />
+</p>
+
+> **GitHub Actions / Parakeet** — A static interface for starting media download or transcription jobs through GitHub Actions.
+
+## Project snapshot
+
+- A Cloudflare Worker protects the GitHub token while releases provide job-status results.
+- Includes a root-level <a href="./project-cover.svg">project-cover.svg</a>, a scalable project cover graphic for this repository.
+
+---
+
 # Prompter — download & transcribe media over GitHub Actions
 
 Paste a video link on a static web page; a remote GitHub Actions runner downloads
