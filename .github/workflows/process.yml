@@ -221,7 +221,7 @@ jobs:
           GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
-          base="${SITE_URL:-https://prompter.ai-bytes.tech}"
+          base="${SITE_URL:-https://prompter.neuralforge.tech}"
           link="${base%/}/?job=$JOB_ID"
           if [ "$MODE" = "download" ]; then what="video download"; else what="transcript"; fi
           export EMAIL_TO="$NOTIFY_EMAIL"
@@ -263,7 +263,7 @@ jobs:
           GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
         run: |
-          base="${SITE_URL:-https://prompter.ai-bytes.tech}"
+          base="${SITE_URL:-https://prompter.neuralforge.tech}"
           link="${base%/}/?job=$JOB_ID"
           reason="The job could not be completed."
           if [ -s "$JOB_ERROR_FILE" ]; then reason="$(cat "$JOB_ERROR_FILE")"; fi

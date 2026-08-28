@@ -11,7 +11,7 @@ GITHUB_REPO  = "SST"
 # it, so every real request now carries the custom-domain Origin. A mismatch here fails
 # as a CORS error in the browser while the page itself still loads fine.
 # Redeploy the Worker after changing this — it is a [vars] value, not a secret.
-ALLOWED_ORIGIN = "https://prompter.ai-bytes.tech"
+ALLOWED_ORIGIN = "https://prompter.neuralforge.tech"
 RATE_LIMIT_PER_HOUR = "10"
 
 # --- Secrets (do NOT put here — set with wrangler) ---------------------------
