@@ -1,287 +1,336 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="color-scheme" content="light dark" />
-<title>Prompter, fetch and transcribe media</title>
-<meta name="description" content="Paste a link. Prompter downloads the video or returns a transcript, with optional speaker labels." />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#080b14">
+<title>Prompter: Download, transcribe, and transform media</title>
+<meta name="description" content="Turn media links into downloadable video and accurate transcripts with optional speaker labels. Fast and free to use.">
+<link rel="icon" href="./logo.svg" type="image/svg+xml">
 
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 
 <!-- Turnstile. Loads only matters if a site key is set below; harmless if unused. -->
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onTurnstileLoad" async defer></script>
 
 <style>
-  /* =====================================================================
-     PROMPTER, sharp editorial theme. Theme aware (light default, dark via
-     prefers-color-scheme). One accent. No rounded corners anywhere.
-     Configuration lives in the CONFIG block in the script at the bottom.
-     THIS IS ABSOLUTE MASTER PIECE
-     ===================================================================== */
   :root {
-    --bg:            #ffffff;
-    --bg-2:          #f4f5f7;
-    --surface:       #ffffff;
-    --surface-2:     #f4f5f7;
-    --line:          #e4e6ea;
-    --line-strong:   #c9ccd3;
-    --ink:           #0b0d12;
-    --text:          #1c2027;
-    --muted:         #6b7280;
-    --faint:         #9aa0ac;
-    --accent:        #3b3bdb;
-    --accent-hover:  #2d2db8;
-    --accent-weak:   rgba(59, 59, 219, 0.10);
-    --on-accent:     #ffffff;
-    --ok:            #1f9d57;
-    --err:           #d23b3b;
-    --err-weak:      rgba(210, 59, 59, 0.08);
-    --wrap: 660px;
-    --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-    --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+    --bg: #080b14;
+    --bg-soft: #0d1120;
+    --surface: rgba(18, 23, 41, .88);
+    --surface-solid: #121729;
+    --surface-2: rgba(255,255,255,.045);
+    --surface-3: rgba(255,255,255,.075);
+    --line: rgba(255,255,255,.09);
+    --line-strong: rgba(255,255,255,.16);
+    --ink: #f8f9ff;
+    --text: #d7dced;
+    --muted: #959db7;
+    --faint: #69718a;
+    --accent: #8b7cff;
+    --accent-2: #67e8f9;
+    --accent-hover: #a69bff;
+    --accent-weak: rgba(139,124,255,.16);
+    --on-accent: #080b14;
+    --ok: #5ee6a8;
+    --err: #ff7d96;
+    --err-weak: rgba(255,125,150,.1);
+    --wrap: 1180px;
+    --font: 'DM Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --display: 'Manrope', var(--font);
+    --mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
     --ease: cubic-bezier(.22,.61,.36,1);
-  }
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --bg:            #0a0b0f;
-      --bg-2:          #0f1116;
-      --surface:       #111318;
-      --surface-2:     #171a21;
-      --line:          #23262e;
-      --line-strong:   #343943;
-      --ink:           #f2f4f8;
-      --text:          #dfe3ea;
-      --muted:         #9aa2b1;
-      --faint:         #656d7c;
-      --accent:        #6f74ff;
-      --accent-hover:  #8a8eff;
-      --accent-weak:   rgba(111, 116, 255, 0.16);
-      --on-accent:     #0a0b0f;
-      --ok:            #37d17f;
-      --err:           #ff6b6b;
-      --err-weak:      rgba(255, 107, 107, 0.12);
-    }
   }
 
   * { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
+  html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
   body {
     margin: 0; min-height: 100vh; background: var(--bg); color: var(--text);
-    font-family: var(--font); line-height: 1.55;
-    display: flex; flex-direction: column;
+    font-family: var(--font); line-height: 1.55; display: flex; flex-direction: column;
     -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+    overflow-x: hidden;
   }
-  .wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 24px; }
+  body::before { content: ""; position: fixed; inset: 0; z-index: -2; pointer-events: none;
+    background:
+      radial-gradient(circle at 76% 11%, rgba(103,232,249,.10), transparent 25rem),
+      radial-gradient(circle at 18% 23%, rgba(139,124,255,.16), transparent 30rem),
+      linear-gradient(180deg, #090c16 0%, #080b14 58%, #0b0e19 100%); }
+  body::after { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: .17;
+    background-image: linear-gradient(rgba(255,255,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px);
+    background-size: 48px 48px; mask-image: linear-gradient(to bottom, black, transparent 72%); }
+  button, input, select { font: inherit; }
   a { color: inherit; }
+  .wrap { width: 100%; max-width: var(--wrap); margin: 0 auto; padding: 0 28px; }
+  .hidden { display: none !important; }
 
-  /* entrance animation, staggered */
-  .rise { opacity: 0; transform: translateY(10px); animation: rise .6s var(--ease) forwards; }
-  .d1 { animation-delay: .05s; } .d2 { animation-delay: .13s; }
-  .d3 { animation-delay: .21s; } .d4 { animation-delay: .29s; }
+  .rise { opacity: 0; transform: translateY(14px); animation: rise .7s var(--ease) forwards; }
+  .d1 { animation-delay: .05s; } .d2 { animation-delay: .14s; }
+  .d3 { animation-delay: .23s; } .d4 { animation-delay: .32s; }
   @keyframes rise { to { opacity: 1; transform: none; } }
+  @keyframes reveal { from { opacity: 0; transform: translateY(-5px); } }
 
-  /* ============================ HEADER ============================ */
-  .site-head { border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 20;
-    background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(8px); }
-  .head-bar { display: flex; align-items: center; justify-content: space-between; height: 62px; }
-  .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; }
-  .mark { width: 26px; height: 26px; background: var(--accent); color: var(--on-accent);
-    display: grid; place-items: center; font-weight: 800; font-size: 15px; }
-  .brand .name { font-weight: 800; font-size: 15px; letter-spacing: .16em; color: var(--ink); }
-  .process { display: none; gap: 22px; font-family: var(--mono); font-size: 11.5px;
-    letter-spacing: .04em; color: var(--faint); }
-  .process b { color: var(--muted); font-weight: 500; }
-  @media (min-width: 620px) { .process { display: flex; } }
+  /* Header */
+  .site-head { position: sticky; top: 0; z-index: 20; border-bottom: 1px solid var(--line);
+    background: rgba(8,11,20,.74); backdrop-filter: blur(20px); }
+  .head-bar { height: 76px; display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: inline-flex; align-items: center; gap: 11px; text-decoration: none; }
+  .mark { width: 36px; height: 36px; display: block; box-shadow: 0 8px 28px rgba(124,105,255,.32); }
+  .mark img { display: block; width: 100%; height: 100%; }
+  .brand .name { color: var(--ink); font: 800 16px/1 var(--display); letter-spacing: -.02em; }
+  .brand .name em { color: var(--faint); font-style: normal; font-weight: 600; }
+  .site-nav { display: flex; align-items: center; gap: 28px; }
+  .site-nav a { color: var(--muted); text-decoration: none; font-size: 14px; font-weight: 600; transition: color .2s; }
+  .site-nav a:hover { color: var(--ink); }
+  .nav-pill { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--line);
+    color: var(--text); font-size: 12px; font-weight: 600; background: var(--surface-2); }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 4px rgba(94,230,168,.1); }
 
-  /* ============================ MAIN ============================ */
-  main { flex: 1 0 auto; padding: 56px 0 72px; }
-  .hero { margin-bottom: 34px; }
-  .eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: .22em;
-    text-transform: uppercase; color: var(--accent); margin: 0 0 14px; }
-  h1 { font-size: clamp(30px, 6vw, 46px); font-weight: 800; letter-spacing: -0.03em;
-    line-height: 1.04; margin: 0 0 14px; color: var(--ink); }
-  .lede { color: var(--muted); font-size: 17px; margin: 0; max-width: 42ch; }
+  /* Hero */
+  main { flex: 1 0 auto; }
+  .hero-shell { min-height: 690px; padding: 74px 0 82px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(440px, 510px); gap: 76px; align-items: center; }
+  .eyebrow { display: inline-flex; align-items: center; gap: 9px; margin: 0 0 22px; color: #c8c0ff;
+    font: 700 12px/1 var(--display); letter-spacing: .13em; text-transform: uppercase; }
+  .eyebrow::before { content: ""; width: 28px; height: 1px; background: linear-gradient(90deg, var(--accent), var(--accent-2)); }
+  h1 { max-width: 720px; margin: 0 0 24px; color: var(--ink); font: 700 clamp(42px, 5.2vw, 72px)/1.02 var(--display);
+    letter-spacing: -.055em; text-wrap: balance; }
+  h1 .gradient { color: transparent; background: linear-gradient(105deg, #b2a8ff 10%, #72e6f5 90%); background-clip: text; -webkit-background-clip: text; }
+  .lede { max-width: 610px; margin: 0; color: var(--muted); font-size: clamp(16px, 1.7vw, 19px); line-height: 1.65; }
+  .trust-row { display: flex; flex-wrap: wrap; gap: 10px 22px; margin: 30px 0 0; padding: 0; list-style: none; }
+  .trust-item { display: inline-flex; gap: 8px; align-items: center; color: var(--text); font-size: 13px; font-weight: 600; }
+  .trust-item svg { width: 15px; height: 15px; color: var(--ok); }
+  .pipeline { max-width: 570px; margin-top: 44px; padding: 19px 20px; border: 1px solid var(--line);
+    background: linear-gradient(120deg, rgba(255,255,255,.05), rgba(255,255,255,.018)); }
+  .pipeline-label { margin: 0 0 15px; color: var(--faint); font: 700 10px/1 var(--display); letter-spacing: .14em; text-transform: uppercase; }
+  .pipeline-flow { display: grid; grid-template-columns: auto 1fr auto 1fr auto; align-items: center; gap: 12px; }
+  .pipe-node { display: flex; align-items: center; gap: 9px; color: var(--text); font-size: 12px; font-weight: 600; white-space: nowrap; }
+  .pipe-icon { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); background: var(--surface-2); }
+  .pipe-icon svg { width: 14px; height: 14px; }
+  .pipe-line { height: 1px; background: linear-gradient(90deg, var(--line-strong), var(--accent)); position: relative; overflow: visible; }
+  .pipe-line::after { content: ""; position: absolute; right: -1px; top: -2px; width: 5px; height: 5px; border-radius: 50%; background: var(--accent); }
 
-  /* ============================ PANEL ============================ */
-  .panel { background: var(--surface); border: 1px solid var(--line); }
-  .panel-body { padding: 26px; }
-
-  /* segmented mode control */
-  .modes { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--line-strong);
-    margin-bottom: 22px; }
-  .mode-btn { appearance: none; border: 0; background: var(--surface-2); color: var(--muted);
-    font-family: inherit; font-size: 14px; font-weight: 600; padding: 12px; cursor: pointer;
-    transition: color .18s var(--ease), background .18s var(--ease); position: relative; }
-  .mode-btn + .mode-btn { border-left: 1px solid var(--line-strong); }
-  .mode-btn[aria-selected="true"] { background: var(--surface); color: var(--ink); }
-  .mode-btn[aria-selected="true"]::after { content: ""; position: absolute; left: 0; right: 0;
-    bottom: -1px; height: 2px; background: var(--accent); animation: slideIn .3s var(--ease); }
-  @keyframes slideIn { from { transform: scaleX(0); } }
-  .mode-btn:hover:not([aria-selected="true"]) { color: var(--ink); }
-
-  /* fields */
+  /* Workspace card */
+  .panel { position: relative; border: 1px solid var(--line-strong); background: var(--surface);
+    box-shadow: 0 30px 80px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.05); backdrop-filter: blur(20px); }
+  .panel::before { content: ""; position: absolute; inset: -1px; z-index: -1;
+    background: linear-gradient(140deg, rgba(139,124,255,.28), transparent 30%, transparent 70%, rgba(103,232,249,.14)); filter: blur(18px); opacity: .65; }
+  .panel-body { padding: 30px; }
+  .form-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 24px; }
+  .form-kicker { margin: 0 0 5px; color: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .form-title { margin: 0; color: var(--ink); font: 700 22px/1.25 var(--display); letter-spacing: -.03em; }
+  .free-badge { flex: none; border: 1px solid rgba(94,230,168,.22); color: var(--ok); background: rgba(94,230,168,.07);
+    padding: 6px 10px; font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 24px; padding: 5px; background: rgba(5,8,16,.55); border: 1px solid var(--line); }
+  .mode-btn { appearance: none; border: 1px solid transparent; background: transparent; color: var(--muted);
+    padding: 11px 12px; cursor: pointer; font-weight: 700; font-size: 13px; transition: .2s var(--ease); }
+  .mode-btn:hover { color: var(--ink); background: var(--surface-2); }
+  .mode-btn[aria-selected="true"] { color: var(--ink); border-color: var(--line-strong); background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.055)); box-shadow: 0 7px 20px rgba(0,0,0,.18); }
+  .mode-btn::before { display: inline-block; margin-right: 8px; color: var(--accent-2); }
+  #mode-download::before { content: "↓"; }
+  #mode-transcribe::before { content: "≋"; font-size: 16px; line-height: 0; }
   .field { margin-bottom: 16px; }
-  .field.hidden { display: none; }
-  .field.reveal { animation: reveal .32s var(--ease); }
-  @keyframes reveal { from { opacity: 0; transform: translateY(-4px); } }
-  .label { display: block; font-size: 11px; font-weight: 700; letter-spacing: .1em;
-    text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-  .input, .select { width: 100%; background: var(--surface-2); border: 1px solid var(--line-strong);
-    color: var(--text); font-family: inherit; font-size: 15px; padding: 13px 14px;
-    transition: border-color .18s var(--ease), box-shadow .18s var(--ease), background .18s var(--ease); }
-  #url { font-family: var(--mono); font-size: 14px; }
-  .input::placeholder { color: var(--faint); }
-  .input:focus, .select:focus { outline: none; border-color: var(--accent); background: var(--surface);
-    box-shadow: inset 0 0 0 1px var(--accent); }
-  .select { appearance: none; cursor: pointer; padding-right: 40px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%236b7280' d='M6 8 0 0h12z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat; background-position: right 14px center; }
-
-  .check { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none;
-    font-size: 14px; font-weight: 600; color: var(--text); padding: 13px 14px;
-    border: 1px solid var(--line-strong); background: var(--surface-2); transition: border-color .18s var(--ease); }
-  .check:hover { border-color: var(--muted); }
-  .check input { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--accent); cursor: pointer; }
-  .check .sub2 { display: block; font-size: 12.5px; font-weight: 400; color: var(--muted); margin-top: 4px; }
-
+  .field.reveal { animation: reveal .3s var(--ease); }
+  .label { display: block; margin: 0 0 8px; color: #b7bed2; font-size: 12px; font-weight: 700; }
+  .input, .select { width: 100%; min-height: 50px; padding: 13px 14px; border: 1px solid var(--line);
+    background: rgba(4,7,15,.54); color: var(--ink); font-size: 14px; transition: border-color .2s, box-shadow .2s, background .2s; }
+  #url { padding-left: 42px; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23959db7' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71'/%3E%3Cpath d='M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: 15px center; }
+  .input::placeholder { color: #5f6880; }
+  .input:focus, .select:focus { outline: none; border-color: rgba(139,124,255,.72); background-color: rgba(9,12,23,.85); box-shadow: 0 0 0 3px rgba(139,124,255,.12); }
+  .select { appearance: none; cursor: pointer; padding-right: 42px; color-scheme: dark;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath fill='%23959db7' d='M6 8 0 0h12z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 15px center; }
+  .check { display: flex; align-items: flex-start; gap: 12px; cursor: pointer; user-select: none; padding: 13px 14px;
+    border: 1px solid var(--line); background: var(--surface-2); color: var(--text); font-size: 14px; font-weight: 600; transition: border-color .2s, background .2s; }
+  .check:hover { border-color: var(--line-strong); background: var(--surface-3); }
+  .check input { appearance: none; flex: none; width: 18px; height: 18px; margin: 2px 0 0; border: 1px solid var(--line-strong); background: rgba(0,0,0,.18); cursor: pointer; display: grid; place-content: center; }
+  .check input::before { content: ""; width: 8px; height: 5px; border-left: 2px solid white; border-bottom: 2px solid white; transform: rotate(-45deg) scale(0); transition: transform .16s; }
+  .check input:checked { background: var(--accent); border-color: var(--accent); }
+  .check input:checked::before { transform: rotate(-45deg) scale(1); }
+  .check .sub2 { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; font-weight: 400; line-height: 1.45; }
   #ts { margin-bottom: 16px; } #ts:empty { margin-bottom: 0; }
+  .submit { position: relative; width: 100%; min-height: 52px; appearance: none; border: 0;
+    background: linear-gradient(100deg, #8b7cff, #7768ee); color: white; font-weight: 700; font-size: 14px; cursor: pointer;
+    box-shadow: 0 13px 30px rgba(100,82,225,.27); transition: transform .2s var(--ease), box-shadow .2s, filter .2s; }
+  .submit::after { content: "→"; margin-left: 9px; font-size: 18px; vertical-align: -1px; }
+  .submit:hover { transform: translateY(-2px); box-shadow: 0 17px 36px rgba(100,82,225,.36); filter: brightness(1.07); }
+  .submit:active { transform: translateY(0); }
+  .submit:focus-visible, .ghost:focus-visible, .mode-btn:focus-visible { outline: 2px solid var(--accent-2); outline-offset: 3px; }
+  .submit:disabled { opacity: .55; cursor: wait; transform: none; }
+  .hint { display: flex; justify-content: center; align-items: flex-start; gap: 7px; margin: 13px 0 0; color: var(--faint); font-size: 11.5px; text-align: center; }
+  .hint::before { content: "i"; flex: none; width: 15px; height: 15px; display: grid; place-items: center; border: 1px solid var(--faint); border-radius: 50%; font-size: 9px; margin-top: 1px; }
 
-  .submit { width: 100%; appearance: none; border: 0; background: var(--accent); color: var(--on-accent);
-    font-family: inherit; font-weight: 700; font-size: 15px; letter-spacing: .01em; padding: 14px;
-    cursor: pointer; transition: background .18s var(--ease), transform .04s var(--ease); }
-  .submit:hover { background: var(--accent-hover); }
-  .submit:active { transform: translateY(1px); }
-  .submit:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .submit:disabled { opacity: .5; cursor: not-allowed; }
-  .hint { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); text-align: center; }
-
-  /* shared-job banner */
-  .banner { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2);
-    border-left: 2px solid var(--accent); padding: 12px 14px; margin-bottom: 20px;
-    font-size: 13.5px; color: var(--muted); }
-  .banner.hidden { display: none; }
-
-  /* ======================= PROGRESS TRACKER ======================= */
-  .run { margin-top: 26px; }
-  .run.hidden, .result.hidden, #form.hidden { display: none; }
-  .steps { display: grid; grid-template-columns: repeat(3, 1fr); position: relative; }
-  .steps::before { content: ""; position: absolute; top: 6px; left: 16%; right: 16%;
-    height: 1px; background: var(--line-strong); }
-  .step { text-align: center; position: relative; z-index: 1; }
-  .marker { display: block; width: 13px; height: 13px; margin: 0 auto 11px;
-    background: var(--surface); border: 1px solid var(--line-strong);
-    transition: background .25s var(--ease), border-color .25s var(--ease); }
-  .slabel { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
-    transition: color .25s var(--ease); }
-  .step.active .marker { border-color: var(--accent); background: var(--accent); animation: pulse 1.7s var(--ease) infinite; }
-  .step.active .slabel { color: var(--accent); }
-  .step.complete .marker { border-color: var(--ok); background: var(--ok); }
-  .step.complete .slabel { color: var(--ink); }
-  @keyframes pulse { 0% { box-shadow: 0 0 0 0 var(--accent-weak); } 100% { box-shadow: 0 0 0 9px transparent; } }
-
-  .bar { height: 2px; background: var(--line); position: relative; overflow: hidden; margin-top: 20px; }
-  .bar-fill { position: absolute; top: 0; bottom: 0; left: 0; background: var(--accent); width: 34%; }
+  /* Shared state, progress and results */
+  .banner { display: flex; gap: 10px; align-items: flex-start; margin-bottom: 22px; padding: 12px 14px; border: 1px solid rgba(103,232,249,.15); background: rgba(103,232,249,.06); color: var(--muted); font-size: 13px; }
+  .banner::before { content: "↗"; color: var(--accent-2); font-weight: 700; }
+  .run { margin-top: 8px; padding: 8px 0; }
+  .steps { display: grid; grid-template-columns: repeat(3,1fr); position: relative; }
+  .steps::before { content: ""; position: absolute; top: 9px; left: 16%; right: 16%; height: 1px; background: var(--line-strong); }
+  .step { position: relative; z-index: 1; text-align: center; }
+  .marker { display: block; width: 19px; height: 19px; margin: 0 auto 10px; border: 5px solid var(--surface-solid); border-radius: 50%; background: var(--faint); box-shadow: 0 0 0 1px var(--line-strong); transition: .25s; }
+  .slabel { color: var(--faint); font-size: 10px; font-weight: 700; letter-spacing: .11em; text-transform: uppercase; }
+  .step.active .marker { background: var(--accent); box-shadow: 0 0 0 1px var(--accent), 0 0 20px rgba(139,124,255,.55); animation: pulse 1.7s var(--ease) infinite; }
+  .step.active .slabel { color: #c2baff; }
+  .step.complete .marker { background: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
+  .step.complete .slabel { color: var(--text); }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 5px rgba(139,124,255,.12), 0 0 22px rgba(139,124,255,.6); } }
+  .bar { height: 3px; margin-top: 22px; background: var(--line); position: relative; overflow: hidden; }
+  .bar-fill { position: absolute; inset-block: 0; left: 0; width: 34%; background: linear-gradient(90deg,var(--accent),var(--accent-2)); }
   #run[data-state="queued"] .bar-fill { width: 10%; animation: breathe 1.9s var(--ease) infinite; }
   #run[data-state="running"] .bar-fill { width: 34%; animation: track 1.5s var(--ease) infinite; }
   #run[data-state="done"] .bar-fill { width: 100%; background: var(--ok); transition: width .4s var(--ease); }
   @keyframes track { 0% { left: -34%; } 100% { left: 100%; } }
-  @keyframes breathe { 0%,100% { opacity: .4; } 50% { opacity: 1; } }
-
-  .status { margin-top: 16px; font-size: 14px; color: var(--muted); text-align: center; min-height: 1.4em; }
-  .status .elapsed { color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; margin-left: 4px; }
-  .notice { margin: 12px 0 0; padding: 11px 14px; font-size: 13px; color: var(--muted);
-    background: var(--surface-2); border-left: 2px solid var(--accent); }
-  .notice.hidden { display: none; }
-
-  /* ============================ RESULT ============================ */
-  .result { margin-top: 24px; animation: reveal .4s var(--ease); }
-  .result-head { display: flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 700;
-    margin: 0 0 15px; color: var(--ink); }
-  .result-head .tick { width: 18px; height: 18px; background: var(--ok); color: var(--on-accent);
-    display: grid; place-items: center; font-size: 12px; }
+  @keyframes breathe { 50% { opacity: .45; } }
+  .status { min-height: 1.4em; margin: 15px 0 0; color: var(--muted); text-align: center; font-size: 13px; }
+  .status .elapsed { margin-left: 5px; color: var(--text); font-variant-numeric: tabular-nums; font-weight: 600; }
+  .notice { margin: 12px 0 0; padding: 11px 13px; background: var(--surface-2); color: var(--muted); font-size: 12px; }
+  .result { margin-top: 22px; animation: reveal .4s var(--ease); }
+  .result-head { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; color: var(--ink); font: 700 17px/1.3 var(--display); }
+  .result-head .tick { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; background: var(--ok); color: var(--on-accent); font-size: 12px; }
   .result-head.error { color: var(--err); }
-
-  .dl { display: inline-flex; align-items: center; gap: 9px; background: var(--accent); color: var(--on-accent);
-    font-weight: 700; font-size: 14px; text-decoration: none; padding: 13px 20px; transition: background .18s var(--ease); }
+  .dl { display: inline-flex; align-items: center; gap: 9px; padding: 12px 17px; background: var(--accent); color: white; font-size: 13px; font-weight: 700; text-decoration: none; }
   .dl:hover { background: var(--accent-hover); }
-  .meta { font-family: var(--mono); font-size: 12.5px; color: var(--muted); margin-top: 12px; word-break: break-all; }
+  .meta { margin-top: 11px; color: var(--muted); font: 11px/1.5 var(--mono); word-break: break-all; }
+  .transcript { max-height: 320px; overflow: auto; padding: 15px; border: 1px solid var(--line); background: rgba(4,7,15,.46); color: var(--text); font: 12px/1.75 var(--mono); white-space: pre-wrap; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .ghost { appearance: none; display: inline-flex; align-items: center; gap: 6px; padding: 9px 12px; border: 1px solid var(--line-strong); background: var(--surface-2); color: var(--text); font-size: 12px; font-weight: 600; text-decoration: none; cursor: pointer; transition: .18s; }
+  .ghost:hover { border-color: rgba(139,124,255,.55); background: var(--accent-weak); color: white; }
+  .errbox { margin-bottom: 15px; padding: 13px 14px; border: 1px solid rgba(255,125,150,.2); background: var(--err-weak); }
+  .errmsg { margin: 0; color: var(--text); font-size: 13px; }
 
-  .transcript { background: var(--surface-2); border: 1px solid var(--line); padding: 16px;
-    max-height: 340px; overflow: auto; font-family: var(--mono); font-size: 13px; line-height: 1.8;
-    white-space: pre-wrap; color: var(--text); }
-  .row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-  .ghost { appearance: none; background: var(--surface); color: var(--text); border: 1px solid var(--line-strong);
-    font-family: inherit; font-size: 13px; font-weight: 600; padding: 10px 14px; cursor: pointer;
-    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
-    transition: border-color .18s var(--ease), color .18s var(--ease); }
-  .ghost:hover { border-color: var(--accent); color: var(--accent); }
-  .ghost:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  /* Roadmap */
+  .roadmap { padding: 78px 0 88px; border-top: 1px solid var(--line); background: rgba(5,8,15,.28); }
+  .section-head { display: flex; justify-content: space-between; align-items: end; gap: 28px; margin-bottom: 32px; }
+  .section-copy { max-width: 590px; }
+  .section-kicker { margin: 0 0 10px; color: var(--accent-2); font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  .section-title { margin: 0; color: var(--ink); font: 700 clamp(28px,4vw,42px)/1.12 var(--display); letter-spacing: -.045em; }
+  .section-note { max-width: 390px; margin: 0; color: var(--muted); font-size: 14px; }
+  .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
+  .feature-card { position: relative; min-height: 220px; padding: 24px; overflow: hidden; border: 1px solid var(--line); background: linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.02)); }
+  .feature-card::after { content: ""; position: absolute; width: 140px; height: 140px; right: -70px; bottom: -80px; border-radius: 50%; background: var(--glow,var(--accent)); filter: blur(60px); opacity: .18; }
+  .feature-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 43px; }
+  .feature-icon { width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid var(--line); background: rgba(255,255,255,.055); color: var(--icon,var(--accent)); }
+  .feature-icon svg { width: 20px; height: 20px; }
+  .tag { padding: 5px 8px; border: 1px solid var(--line); color: var(--muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .tag.live { border-color: rgba(94,230,168,.2); background: rgba(94,230,168,.07); color: var(--ok); }
+  .feature-card h3 { margin: 0 0 8px; color: var(--ink); font: 700 17px/1.3 var(--display); }
+  .feature-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+  .feature-live { --icon: #5ee6a8; --glow: #5ee6a8; }
+  .feature-translate { --icon: #8b7cff; --glow: #8b7cff; }
+  .feature-subtitles { --icon: #67e8f9; --glow: #67e8f9; }
 
-  .errbox { background: var(--err-weak); border-left: 2px solid var(--err); padding: 14px 15px; margin-bottom: 16px; }
-  .errmsg { color: var(--text); font-size: 14.5px; margin: 0; }
-
-  /* ============================ FOOTER ============================ */
+  /* Footer */
   .site-foot { border-top: 1px solid var(--line); flex-shrink: 0; }
-  .foot-grid { display: grid; grid-template-columns: 1fr; gap: 22px; padding: 34px 0; }
-  @media (min-width: 620px) { .foot-grid { grid-template-columns: 1.3fr 1fr; } }
-  .foot-brand { font-weight: 800; letter-spacing: .16em; font-size: 13px; color: var(--ink); margin-bottom: 10px; }
-  .foot p { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 34ch; }
-  .foot-notes { display: flex; flex-direction: column; gap: 9px; }
-  .foot-notes span { display: flex; gap: 9px; align-items: baseline; color: var(--muted); font-size: 13px; }
-  .foot-notes span::before { content: ""; width: 5px; height: 5px; background: var(--accent); flex: none; transform: translateY(3px); }
-  .foot-legal { border-top: 1px solid var(--line); padding: 16px 0; font-family: var(--mono);
-    font-size: 11.5px; letter-spacing: .04em; color: var(--faint); display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .foot-grid { display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 54px; padding: 48px 0; }
+  .foot-brand { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; color: var(--ink); font: 800 15px/1 var(--display); }
+  .foot-brand .footer-logo { width: 26px; height: 26px; display: block; }
+  .foot p { max-width: 380px; margin: 0; color: var(--muted); font-size: 13px; }
+  .foot-label { margin: 0 0 13px; color: var(--text); font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+  .foot-list { display: flex; flex-direction: column; gap: 9px; color: var(--muted); font-size: 12px; }
+  .foot-list span { display: flex; align-items: center; gap: 8px; }
+  .foot-list span::before { content: ""; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+  .foot-legal { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 18px 0 24px; border-top: 1px solid var(--line); color: var(--faint); font-size: 11px; }
 
-  @media (prefers-reduced-motion: reduce) {
-    .rise, .result, .mode-btn[aria-selected="true"]::after, .field.reveal { animation: none; opacity: 1; transform: none; }
-    .step.active .marker, #run .bar-fill { animation: none; }
+  @media (max-width: 980px) {
+    .hero-shell { grid-template-columns: 1fr; gap: 52px; padding-top: 62px; }
+    .hero-copy { max-width: 760px; }
+    .panel { max-width: 620px; }
+    .section-head { align-items: start; flex-direction: column; }
   }
-  @media (max-width: 460px) { main { padding-top: 40px; } .panel-body { padding: 18px; } }
+  @media (max-width: 720px) {
+    .wrap { padding-inline: 20px; }
+    .site-nav a { display: none; }
+    .hero-shell { min-height: 0; padding: 50px 0 64px; gap: 40px; }
+    h1 { font-size: clamp(39px,12vw,58px); }
+    .pipeline { margin-top: 34px; }
+    .feature-grid { grid-template-columns: 1fr; }
+    .feature-card { min-height: 190px; }
+    .foot-grid { grid-template-columns: 1fr; gap: 30px; }
+  }
+  @media (max-width: 480px) {
+    .head-bar { height: 68px; }
+    .brand .name em { display: none; }
+    .nav-pill { padding: 7px 10px; }
+    .hero-shell { padding-top: 42px; }
+    h1 { font-size: 40px; }
+    .lede { font-size: 16px; }
+    .pipeline { display: none; }
+    .panel-body { padding: 20px; }
+    .form-title { font-size: 20px; }
+    .modes { gap: 4px; }
+    .mode-btn { padding-inline: 7px; font-size: 12px; }
+    .roadmap { padding: 58px 0 66px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .rise, .result, .field.reveal, .step.active .marker, #run .bar-fill { animation: none !important; opacity: 1; transform: none; }
+    .submit { transition: none; }
+  }
 </style>
 </head>
 <body>
-  <!-- ============================ HEADER ============================ -->
   <header class="site-head">
     <div class="wrap head-bar">
       <a class="brand" href="./" aria-label="Prompter home">
-        <span class="mark">P</span><span class="name">PROMPTER</span>
+        <span class="mark" aria-hidden="true"><img src="./logo.svg" alt=""></span>
+        <span class="name">Prompter <em>/ Media tools</em></span>
       </a>
-      <nav class="process" aria-label="How it works">
-        <span><b>01</b> Paste link</span>
-        <span><b>02</b> Process</span>
-        <span><b>03</b> Get result</span>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="#workspace">Workspace</a>
+        <a href="#roadmap">What's next</a>
+        <span class="nav-pill"><span class="live-dot"></span> No account needed</span>
       </nav>
     </div>
   </header>
 
-  <!-- ============================ MAIN ============================ -->
   <main>
-    <div class="wrap">
-      <section class="hero rise d1">
-        <p class="eyebrow">Remote media jobs</p>
-        <h1>Fetch and transcribe<br>any media link.</h1>
-        <p class="lede">Paste a link. A remote worker downloads the video, or transcribes it with speaker labels, and hands the result back to this page.</p>
-      </section>
+    <section class="wrap hero-shell" id="workspace">
+      <div class="hero-copy rise d1">
+        <p class="eyebrow">Your AI media workspace</p>
+        <h1>Turn any media link into <span class="gradient">something useful.</span></h1>
+        <p class="lede">Download videos or transform hours of speech into clean, searchable text. No software to install and no account to create. Just paste a link and let Prompter handle the rest.</p>
+
+        <ul class="trust-row">
+          <li class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>No sign-up</li>
+          <li class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Speaker-aware transcripts</li>
+          <li class="trust-item"><svg viewBox="0 0 24 24" fill="none"><path d="m5 12 4 4L19 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Shareable results</li>
+        </ul>
+
+        <div class="pipeline rise d3" role="group" aria-label="Three step workflow">
+          <p class="pipeline-label">One link. Three simple steps.</p>
+          <div class="pipeline-flow">
+            <div class="pipe-node"><span class="pipe-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7L12 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>Paste</div>
+            <span class="pipe-line"></span>
+            <div class="pipe-node"><span class="pipe-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v3m0 12v3M3 12h3m12 0h3M5.6 5.6l2.1 2.1m8.6 8.6 2.1 2.1m0-12.8-2.1 2.1m-8.6 8.6-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2"/></svg></span>Process</div>
+            <span class="pipe-line"></span>
+            <div class="pipe-node"><span class="pipe-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 4v11m0 0 4-4m-4 4-4-4M5 20h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Export</div>
+          </div>
+        </div>
+      </div>
 
       <div class="panel rise d2">
         <div class="panel-body">
-          <!-- shared-link banner (only shown when opened via ?job=) -->
-          <div class="banner hidden" id="shared-banner">
-            <span>You are viewing a shared job. It keeps checking until the result is ready. Results are kept for a few days.</span>
+          <div class="form-head">
+            <div>
+              <p class="form-kicker">New media job</p>
+              <h2 class="form-title">What would you like to do?</h2>
+            </div>
+            <span class="free-badge">Free to use</span>
           </div>
 
-          <div id="form">
+          <div class="banner hidden" id="shared-banner">
+            <span>You are viewing a shared job. It will keep checking until the result is ready. Results are kept for a few days.</span>
+          </div>
+
+          <form id="form">
             <div class="modes" role="tablist" aria-label="Job type">
-              <button class="mode-btn" id="mode-download" role="tab" aria-selected="true">Download video</button>
-              <button class="mode-btn" id="mode-transcribe" role="tab" aria-selected="false">Transcribe</button>
+              <button class="mode-btn" id="mode-download" type="button" role="tab" aria-selected="true">Download video</button>
+              <button class="mode-btn" id="mode-transcribe" type="button" role="tab" aria-selected="false">Create transcript</button>
             </div>
 
             <div class="field">
-              <label class="label" for="url">Video link</label>
-              <input class="input" id="url" type="url" inputmode="url" placeholder="https://" autocomplete="off" spellcheck="false" />
+              <label class="label" for="url">Paste your media link</label>
+              <input class="input" id="url" type="url" inputmode="url" placeholder="https://example.com/video" autocomplete="off" spellcheck="false">
             </div>
 
             <div class="field" id="quality-field">
@@ -297,7 +346,7 @@
 
             <div class="field hidden" id="diarize-field">
               <label class="check">
-                <input type="checkbox" id="diarize" />
+                <input type="checkbox" id="diarize">
                 <span>Label speakers
                   <span class="sub2">Tags each turn as Speaker 1, Speaker 2, and so on. Adds time to the job.</span>
                 </span>
@@ -306,12 +355,12 @@
 
             <div class="field hidden" id="speakers-field">
               <label class="label" for="speakers">How many speakers?</label>
-              <input class="input" id="speakers" type="number" min="1" max="20" step="1" value="2" inputmode="numeric" />
+              <input class="input" id="speakers" type="number" min="1" max="20" step="1" value="2" inputmode="numeric">
             </div>
 
             <div class="field" id="notify-field">
               <label class="check">
-                <input type="checkbox" id="notify" />
+                <input type="checkbox" id="notify">
                 <span>Email me the result
                   <span class="sub2">Get a link by email when it is ready, so you can close this tab.</span>
                 </span>
@@ -320,21 +369,20 @@
 
             <div class="field hidden" id="email-field">
               <label class="label" for="email">Your email</label>
-              <input class="input" id="email" type="email" inputmode="email" placeholder="you@example.com" autocomplete="email" spellcheck="false" />
+              <input class="input" id="email" type="email" inputmode="email" placeholder="you@example.com" autocomplete="email" spellcheck="false">
             </div>
 
             <div class="field hidden" id="name-field">
               <label class="label" for="jobname">Name this job (optional)</label>
-              <input class="input" id="jobname" type="text" maxlength="100" placeholder="e.g. Team standup, March 3" autocomplete="off" />
+              <input class="input" id="jobname" type="text" maxlength="100" placeholder="e.g. Team standup, March 3" autocomplete="off">
             </div>
 
             <div id="ts"></div>
 
-            <button class="submit" id="submit">Download video</button>
+            <button class="submit" id="submit" type="submit">Download video</button>
             <p class="hint" id="hint">Jobs take a few minutes. You can leave this tab open. YouTube links are not supported.</p>
-          </div>
+          </form>
 
-          <!-- progress tracker -->
           <section class="run hidden" id="run" data-state="queued" aria-live="polite">
             <div class="steps">
               <div class="step" id="s-queued"><span class="marker"></span><span class="slabel">Queued</span></div>
@@ -346,30 +394,77 @@
             <p class="notice hidden" id="notice"></p>
           </section>
 
-          <!-- result -->
           <section class="result hidden" id="result"></section>
         </div>
       </div>
-    </div>
+    </section>
+
+    <section class="roadmap" id="roadmap">
+      <div class="wrap">
+        <div class="section-head rise d1">
+          <div class="section-copy">
+            <p class="section-kicker">Built for what comes next</p>
+            <h2 class="section-title">One workspace. More ways to make media move.</h2>
+          </div>
+          <p class="section-note">The essentials are ready today. Translation and video-ready captions are the next steps in the Prompter toolkit.</p>
+        </div>
+        <div class="feature-grid">
+          <article class="feature-card feature-live rise d2">
+            <div class="feature-top">
+              <span class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M4 5h16v14H4zM8 9h8m-8 4h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <span class="tag live">Available now</span>
+            </div>
+            <h3>Accurate transcription</h3>
+            <p>Turn speech into clean TXT and SRT files, with optional labels that keep every speaker easy to follow.</p>
+          </article>
+          <article class="feature-card feature-translate rise d3">
+            <div class="feature-top">
+              <span class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" stroke="currentColor" stroke-width="1.8"/></svg></span>
+              <span class="tag">Coming soon</span>
+            </div>
+            <h3>Translate across languages</h3>
+            <p>Convert transcripts into the language you need while preserving meaning, structure, and speaker context.</p>
+          </article>
+          <article class="feature-card feature-subtitles rise d4">
+            <div class="feature-top">
+              <span class="feature-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 11h4m2 0h4M7 15h7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+              <span class="tag">Coming soon</span>
+            </div>
+            <h3>Publish-ready subtitles</h3>
+            <p>Style captions and place them directly on your video, ready to share on any platform without extra editing.</p>
+          </article>
+        </div>
+      </div>
+    </section>
   </main>
 
-  <!-- ============================ FOOTER ============================ -->
   <footer class="site-foot">
     <div class="wrap">
       <div class="foot-grid">
         <div>
-          <div class="foot-brand">PROMPTER</div>
-          <p>A free, no login tool. Downloading and transcription run on GitHub Actions, so nothing runs on a server of your own.</p>
+          <div class="foot-brand"><img class="footer-logo" src="./logo.svg" alt=""> Prompter</div>
+          <p>A simple, capable media toolkit. Downloading and transcription run securely through remote jobs, with no login required.</p>
         </div>
-        <div class="foot-notes">
-          <span>Video downloads and audio transcripts, with optional speaker labels.</span>
-          <span>Result links are shareable and kept for a few days.</span>
-          <span>YouTube links are not supported.</span>
+        <div>
+          <p class="foot-label">What it does</p>
+          <div class="foot-list">
+            <span>Video downloads</span>
+            <span>Audio transcription</span>
+            <span>Speaker detection</span>
+          </div>
+        </div>
+        <div>
+          <p class="foot-label">Good to know</p>
+          <div class="foot-list">
+            <span>Shareable job links</span>
+            <span>Results kept for a few days</span>
+            <span>YouTube is not supported</span>
+          </div>
         </div>
       </div>
       <div class="foot-legal">
-        <span>Prompter</span>
-        <span>Runs on GitHub Actions</span>
+        <span>© 2026 Prompter</span>
+        <span>Powered by GitHub Actions</span>
       </div>
     </div>
   </footer>
@@ -538,8 +633,7 @@
   function shareButton() { return currentJobId ? `<button class="ghost" data-copy-link>Copy link to this job</button>` : ""; }
 
   /* ---- submit / start a job ---- */
-  el("submit").addEventListener("click", start);
-  el("url").addEventListener("keydown", (e) => { if (e.key === "Enter") start(); });
+  el("form").addEventListener("submit", (event) => { event.preventDefault(); start(); });
 
   async function start() {
     const url = el("url").value.trim();
