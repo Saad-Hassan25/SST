@@ -28,7 +28,43 @@ const server = http.createServer(async (req, res) => {
     const page = await context.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
     await context.route('https://fonts.**/**', route => route.abort());
-    await context.route('https://challenges.cloudflare.com/**', route => route.abort());
+    // Exercise the real app's verification wiring without contacting Turnstile.
+    // Blocking api.js makes exports fail as soon as a production site key is set.
+    const verificationToken = 'browser-test-turnstile-token';
+    await context.route('https://challenges.cloudflare.com/**', route => {
+      const onload = new URL(route.request().url()).searchParams.get('onload');
+      return route.fulfill({ contentType: 'text/javascript', body: `
+        (() => {
+          const widgets = new Map();
+          const state = window.__testTurnstile = { rendered: [], executions: 0, resets: 0, failNext: false };
+          window.turnstile = {
+            render(container, options) {
+              if (!document.querySelector(container)) throw new Error('Missing Turnstile container');
+              const id = 'test-widget-' + widgets.size;
+              widgets.set(id, options);
+              state.rendered.push({ container, sitekey: options.sitekey });
+              return id;
+            },
+            execute(id) {
+              const options = widgets.get(id);
+              if (!options) throw new Error('Unknown Turnstile widget');
+              state.executions++;
+              queueMicrotask(() => {
+                if (state.failNext) { state.failNext = false; options['error-callback'](); }
+                else options.callback(${JSON.stringify(verificationToken)});
+              });
+            },
+            reset(id) {
+              if (!widgets.has(id)) throw new Error('Unknown Turnstile widget reset');
+              state.resets++;
+            }
+          };
+          const initialize = () => window[${JSON.stringify(onload)}]?.();
+          if (typeof window[${JSON.stringify(onload)}] === 'function') initialize();
+          else window.addEventListener('load', initialize, { once: true });
+        })();
+      ` });
+    });
     const jobs = new Map(), submissions = []; let hold = false, omitCue = false, lastTrigger;
     const resultFor = ({ kind, payload }) => {
       if (kind === 'embed') return { data: payload.input.map((_t, i) => ({ index: i, embedding: [1, 0.5] })) };
@@ -112,9 +148,26 @@ const server = http.createServer(async (req, res) => {
     await page.locator('#video-describer .submit').click(); await expect(page.locator('#vid-output')).toContainText('Frame');
     assert.equal(submissions.at(-1).payload.messages[0].content.filter(p => p.type === 'image_url').length, 4);
     console.log('PASS resized image descriptions and bounded four-frame video sampling');
-    await page.locator('#burn-url').fill('https://media.test/video.mp4'); await page.locator('#burn-in .submit').click();
+    await page.locator('#burn-url').fill('https://media.test/video.mp4');
+    const verificationEnabled = await page.evaluate(() => !!window.PROMPTER_CONFIG.turnstileSiteKey);
+    if (verificationEnabled) {
+      await expect.poll(() => page.evaluate(() => window.__testTurnstile?.rendered.some(w => w.container === '#caption-ts'))).toBe(true);
+      await page.evaluate(() => { window.__testTurnstile.failNext = true; });
+      await page.locator('#burn-in .submit').click();
+      await expect(page.locator('#burn-in .job-status')).toContainText('Verification failed');
+      assert.equal(lastTrigger, undefined, 'failed verification must not dispatch a caption job');
+      await expect(page.locator('#burn-in .submit')).toBeEnabled();
+      assert.equal(await page.evaluate(() => window.__testTurnstile.executions), 1);
+      console.log('PASS failed caption verification prevents job dispatch and allows retry');
+    }
+    await page.locator('#burn-in .submit').click();
     await expect(page.getByRole('link', { name: 'Open video export' })).toBeVisible();
     assert.equal(lastTrigger.mode, 'captions'); assert.equal(lastTrigger.caption_style, 'classic');
+    assert.equal(lastTrigger.turnstileToken, verificationEnabled ? verificationToken : '');
+    if (verificationEnabled) {
+      assert.equal(await page.evaluate(() => window.__testTurnstile.executions), 2);
+      assert.equal(await page.evaluate(() => window.__testTurnstile.resets), 1, 'used verification token must be reset after dispatch');
+    }
     console.log('PASS styled caption export dispatch');
     await page.locator('#sum-input').fill('A new meeting launches on Monday.'); hold = true;
     await page.locator('#summary .submit').click(); await expect(page.locator('#summary .job-status')).toContainText('still working');
