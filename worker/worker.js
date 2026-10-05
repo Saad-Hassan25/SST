@@ -1,12 +1,15 @@
 // Cloudflare Worker - secure relay between the static GitHub Pages frontend and
 // GitHub Actions. The GitHub token lives here as a server-side secret and never
-// reaches the browser. Two endpoints:
+// reaches the browser. Media endpoints:
 //   POST /trigger  -> validates input, fires a repository_dispatch, returns { job_id }
 //   GET  /status   -> reports queued | running | done | error for a job_id
 //
 // Configure via wrangler.toml [vars] + secrets (see wrangler.toml).
 
-const MODES = new Set(["download", "transcribe"]);
+import { handleAI } from "./ai.js";
+export { AIJob } from "./ai.js";
+
+const MODES = new Set(["download", "transcribe", "captions"]);
 const QUALITIES = new Set(["best", "1080p", "720p", "480p", "360p"]);
 const MAX_SPEAKERS = 20;   // keep in sync with scripts/transcribe.py
 const GH_API = "https://api.github.com";
@@ -105,11 +108,19 @@ async function handleTrigger(request, env) {
   }
 
   const { url, mode, quality = "best", diarize = false, speakers, notify = false, email, name, turnstileToken } = body || {};
-  if (!MODES.has(mode)) return json(env, { error: "Pick download or transcribe." }, 400);
+  if (!MODES.has(mode)) return json(env, { error: "Pick download, transcribe or captions." }, 400);
   if (!isHttpUrl(url)) return json(env, { error: "Enter a valid video link (http or https)." }, 400);
-  if (mode === "download" && !QUALITIES.has(quality))
+  if ((mode === "download" || mode === "captions") && !QUALITIES.has(quality))
     return json(env, { error: "Unknown quality option." }, 400);
   if (isYouTubeUrl(url)) return json(env, { error: YOUTUBE_MESSAGE }, 400);
+
+  if (mode === "captions") {
+    if (typeof body.subtitles !== "string" || new TextEncoder().encode(body.subtitles).length > 40000 ||
+        !/^\d+\s*\n\d{2,}:\d{2}:\d{2},\d{3} --> \d{2,}:\d{2}:\d{2},\d{3}/m.test(body.subtitles))
+      return json(env, { error: "Provide valid SRT subtitles (up to 40 KB)." }, 400);
+    if (!["classic", "bold", "minimal"].includes(body.caption_style))
+      return json(env, { error: "Choose a caption style." }, 400);
+  }
 
   // Optional email notification. Validate the address here; it becomes an SMTP
   // recipient on the runner. The link in the email is built server-side from
@@ -162,6 +173,7 @@ async function handleTrigger(request, env) {
           job_id: jobId,
           diarize: wantDiarize,
           speakers: speakerCount,
+          ...(mode === "captions" ? { subtitles: body.subtitles, caption_style: body.caption_style } : {}),
           // Only present when the user opted into email. `site` is the trusted base
           // for the emailed link; the workflow falls back to a default if it's blank.
           // `name` is the optional, sanitized label shown in the email (may be "").
@@ -192,7 +204,7 @@ function parseNotes(body) {
 // mode from notes if present, else parsed from the release title "Job <id> (mode)".
 function modeFrom(release, notes) {
   if (notes.mode && MODES.has(notes.mode)) return notes.mode;
-  const m = (release.name || "").match(/\((download|transcribe)\)\s*$/);
+  const m = (release.name || "").match(/\((download|transcribe|captions)\)\s*$/);
   return m ? m[1] : null;
 }
 
@@ -254,6 +266,7 @@ async function handleStatus(request, env) {
   // With diarization on, output holds BOTH X.txt and X.diarized.txt; asset order from
   // the API isn't guaranteed, so prefer the labelled one explicitly.
   let transcript = null;
+  let subtitles = null;
   const txts = files.filter((f) => f.name.toLowerCase().endsWith(".txt"));
   const txt = txts.find((f) => f.name.toLowerCase().endsWith(".diarized.txt")) || txts[0];
   if (txt) {
@@ -261,7 +274,16 @@ async function handleStatus(request, env) {
     if (c.ok) transcript = await c.text();
   }
 
-  return json(env, { status: "done", files, transcript, mode });
+  const srts = files.filter((f) => f.name.toLowerCase().endsWith(".srt"));
+  const srt = srts.find((f) => f.name.toLowerCase().endsWith(".diarized.srt")) || srts[0];
+  if (srt && new URL(request.url).searchParams.get("include_subtitles") === "1") {
+    try {
+      const c = await fetch(srt.url, { signal: AbortSignal.timeout(15000) });
+      if (c.ok) subtitles = await c.text();
+    } catch { /* text results remain available if a subtitle fetch fails */ }
+  }
+
+  return json(env, { status: "done", files, transcript, subtitles, mode });
 }
 
 export default {
@@ -269,6 +291,15 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors(env) });
 
     const { pathname } = new URL(request.url);
+    if (pathname.startsWith("/ai/")) {
+      try {
+        const response = await handleAI(request, env);
+        const headers = new Headers(response.headers);
+        for (const [key, value] of Object.entries(cors(env))) headers.set(key, value);
+        headers.set("Cache-Control", "no-store");
+        return new Response(response.body, { status: response.status, headers });
+      } catch { return json(env, { error: "AI service temporarily unavailable. Please try again." }, 503); }
+    }
     if (request.method === "POST" && pathname === "/trigger") return handleTrigger(request, env);
     if (request.method === "GET" && pathname === "/status") return handleStatus(request, env);
     return json(env, { error: "Not found." }, 404);

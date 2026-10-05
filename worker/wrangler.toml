@@ -13,6 +13,7 @@ GITHUB_REPO  = "SST"
 # Redeploy the Worker after changing this — it is a [vars] value, not a secret.
 ALLOWED_ORIGIN = "https://prompter.neuralforge.tech"
 RATE_LIMIT_PER_HOUR = "10"
+AI_RATE_LIMIT_PER_HOUR = "120"
 
 # --- Secrets (do NOT put here — set with wrangler) ---------------------------
 #   wrangler secret put GITHUB_TOKEN
@@ -23,6 +24,7 @@ RATE_LIMIT_PER_HOUR = "10"
 #   wrangler secret put TURNSTILE_SECRET     # optional
 #     Only if you enable Cloudflare Turnstile on the frontend. If unset, the
 #     Worker skips bot verification.
+#   wrangler secret put NVIDIA_API_KEY       # required for the AI tools
 
 # --- Per-IP rate limiting (ON) -----------------------------------------------
 # Created with: wrangler kv namespace create RATE_LIMIT
@@ -31,3 +33,13 @@ RATE_LIMIT_PER_HOUR = "10"
 [[kv_namespaces]]
 binding = "RATE_LIMIT"
 id = "50238c3850df4aa59c76093ff9c78621"
+
+# SQLite-backed Durable Objects work on the Workers free plan. One persistent
+# object per AI job; a shared object enforces NVIDIA's 30 requests/minute budget.
+[[durable_objects.bindings]]
+name = "AI_JOBS"
+class_name = "AIJob"
+
+[[migrations]]
+tag = "ai-jobs-v1"
+new_sqlite_classes = ["AIJob"]

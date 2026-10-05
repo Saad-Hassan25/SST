@@ -1,0 +1,77 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="dark"><meta name="theme-color" content="#080b14">
+<title>Prompter AI Tools — Transform your media</title>
+<meta name="description" content="Summarize, translate, search, repurpose and subtitle your transcripts. Describe images and videos with Prompter AI Tools.">
+<link rel="icon" href="../logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="site-head"><div class="wrap head-bar">
+<a class="brand" href="../"><img src="../logo.svg" alt="" width="28" height="28"> Prompter <em>/ AI Tools</em></a>
+<nav class="site-nav" aria-label="Primary navigation"><a href="../#workspace">Download &amp; transcribe</a><a href="#source">Your transcript</a></nav>
+<span class="nav-pill"><span class="live-dot"></span> No account needed</span>
+</div></header>
+<main class="wrap">
+<section class="hero"><p class="eyebrow">From transcript to your next idea</p>
+<h1>Make more of <span class="gradient">your media.</span></h1>
+<p class="lede">Summaries, translations, answers and publish-ready captions. Start with a finished Prompter transcript, paste your own, or choose an image or video.</p>
+<p class="hint">AI inputs are processed by NVIDIA and may be recorded under its trial terms. Results and saved job links expire after 24 hours. Slow responses can take several minutes.</p>
+<p class="service-status" id="service-status" role="status">Checking AI availability…</p></section>
+<section class="panel hidden" id="saved-job"><div class="panel-body"><h2>Saved AI result</h2><p id="saved-status" role="status"></p><pre class="output" id="saved-output"></pre></div></section>
+<section class="panel" id="source"><div class="panel-body">
+<p class="form-kicker">Start here</p><h2 class="form-title">Your transcript</h2>
+<p class="desc">Paste text or timed SRT/VTT subtitles. Timestamps help chapters, answers and clip suggestions point to the right moment.</p>
+<label class="label" for="source-text">Source transcript or subtitles</label><textarea class="input area" id="source-text" rows="5" placeholder="Paste your transcript or subtitle file here"></textarea>
+<div class="row"><label class="ghost" for="source-file">Import TXT / SRT / VTT</label><input id="source-file" type="file" accept=".txt,.srt,.vtt,text/plain" class="file-input"><button class="ghost" id="use-source" type="button">Use in transcript tools</button><a class="ghost" href="../#workspace">Create a transcript</a></div>
+<p class="hint" id="import-status" role="status"></p>
+<div class="row hidden" id="resume-row"><span class="hint">A previous operation was saved in this tab.</span><button class="ghost" id="resume-operation">Resume saved operation</button><button class="ghost" id="discard-operation">Discard</button></div>
+</div></section>
+<nav class="tool-nav" aria-label="Choose a tool">
+<a href="#summary">Summary</a><a href="#translate">Translate</a><a href="#chat">Search &amp; chat</a><a href="#repurpose">Repurpose</a><a href="#smart-subtitles">Smart subtitles</a><a href="#notes">Notes</a><a href="#video-subtitles">Video subtitles</a><a href="#burn-in">Captioned video</a><a href="#video-describer">Video Q&amp;A</a><a href="#image-describer">Images</a><a href="#clips">Clip finder</a><a href="#safety">Safety</a>
+</nav>
+<div class="tool-grid">
+<section class="panel" id="summary"><div class="panel-body"><p class="form-kicker">See the bigger picture</p><h2>Summary, chapters &amp; key moments</h2><p class="desc">Skim the main ideas and find the moments worth revisiting.</p>
+<label class="label" for="sum-input">Transcript or timed subtitles</label><textarea class="input area" id="sum-input" rows="5"></textarea><button class="submit" onclick="toolSummary(this)">Summarize</button><pre class="output hidden" id="sum-output"></pre></div></section>
+<section class="panel" id="translate"><div class="panel-body"><p class="form-kicker">Reach another audience</p><h2>Transcript translator</h2><p class="desc">Translate text or SRT while preserving speaker labels and subtitle timings.</p>
+<label class="label" for="tr-input">Transcript or SRT</label><textarea class="input area" id="tr-input" rows="5"></textarea>
+<div class="grid2"><div class="field"><label class="label" for="tr-from">From</label><select class="select" id="tr-from"></select></div><div class="field"><label class="label" for="tr-to">To</label><select class="select" id="tr-to"></select></div></div>
+<p class="hint">Auto-detection, Urdu, Persian and Malay use general AI translation. Other supported languages use NVIDIA Riva, through English where needed.</p><button class="submit" onclick="toolTranslate(this)">Translate</button><pre class="output hidden" id="tr-output"></pre></div></section>
+<section class="panel" id="chat"><div class="panel-body"><p class="form-kicker">Find the answer</p><h2>Search &amp; chat with your video</h2><p class="desc">Index once, search by meaning, and ask questions with source passages you can verify.</p>
+<label class="label" for="chat-input">Transcript or timed subtitles</label><textarea class="input area" id="chat-input" rows="5"></textarea><button class="submit" onclick="toolIndex(this)">Index transcript</button>
+<div class="row hidden" id="chat-q-row"><label class="label" for="chat-q">Question or search phrase</label><input class="input grow" id="chat-q" placeholder="Where do they explain pricing?"><button class="ghost" onclick="toolAsk(this)">Ask</button><button class="ghost" onclick="toolSearch(this)">Search</button></div><pre class="output hidden" id="chat-output"></pre></div></section>
+<section class="panel" id="repurpose"><div class="panel-body"><p class="form-kicker">One recording, more possibilities</p><h2>Content repurposer</h2><p class="desc">Turn your ideas into a draft for your next channel.</p>
+<label class="label" for="rep-input">Transcript</label><textarea class="input area" id="rep-input" rows="5"></textarea><div class="field"><label class="label" for="rep-kind">Output format</label><select class="select" id="rep-kind"><option value="blog">Blog post</option><option value="yt">YouTube description</option><option value="x">X thread</option><option value="linkedin">LinkedIn post</option><option value="newsletter">Newsletter</option></select></div><button class="submit" onclick="toolRepurpose(this)">Repurpose</button><pre class="output hidden" id="rep-output" contenteditable="true" aria-label="Editable repurposed draft"></pre></div></section>
+<section class="panel" id="smart-subtitles"><div class="panel-body"><p class="form-kicker">Captions that read naturally</p><h2>Smart subtitles</h2><p class="desc">AI arranges captions into readable lines. Existing timing stays within each original cue. Plain text receives approximate timing.</p>
+<label class="label" for="ss-input">SRT / VTT or plain text</label><textarea class="input area" id="ss-input" rows="5"></textarea><button class="submit" onclick="toolSmartSubs(this)">Make subtitles</button><div class="row hidden" id="ss-downloads"><button class="ghost" onclick="dlSubs('srt')">Download SRT</button><button class="ghost" onclick="dlSubs('vtt')">Download VTT</button></div><pre class="output hidden" id="ss-output"></pre></div></section>
+<section class="panel" id="notes"><div class="panel-body"><p class="form-kicker">Keep the useful details</p><h2>Meeting &amp; podcast notes</h2><p class="desc">Extract decisions, action items by speaker, open questions and quotes into exportable structured notes.</p>
+<label class="label" for="notes-input">Transcript, preferably with speaker labels</label><textarea class="input area" id="notes-input" rows="5"></textarea><button class="submit" onclick="toolNotes(this)">Extract notes</button><pre class="output hidden" id="notes-output"></pre></div></section>
+<section class="panel wide accent" id="video-subtitles"><div class="panel-body"><p class="form-kicker">Watch in another language</p><h2>Video subtitle translator</h2><p class="desc">Load a video, add its timed subtitles, translate, and watch with closed captions. You can also download translated SRT or VTT.</p>
+<div class="grid2"><div class="field"><label class="label" for="vs-file">Video file</label><input class="input" id="vs-file" type="file" accept="video/*"></div><div class="field"><label class="label" for="vs-url">Or a direct video URL</label><input class="input" id="vs-url" type="url" placeholder="https://…/video.mp4"></div></div>
+<button class="ghost" onclick="vsLoadVideo()">Load video</button><video id="vs-video" class="video hidden" controls crossorigin="anonymous"></video>
+<label class="label" for="vs-srt">Subtitles or plain transcript</label><textarea class="input area" id="vs-srt" rows="6"></textarea>
+<div class="grid2"><div class="field"><label class="label" for="vs-from">From</label><select class="select" id="vs-from"></select></div><div class="field"><label class="label" for="vs-to">To</label><select class="select" id="vs-to"></select></div></div>
+<button class="submit" onclick="vsTranslate(this)">Translate subtitles onto video</button><div class="row hidden" id="vs-downloads"><button class="ghost" onclick="vsDl('srt')">Download SRT</button><button class="ghost" onclick="vsDl('vtt')">Download VTT</button></div><pre class="output hidden" id="vs-output"></pre></div></section>
+<section class="panel wide" id="burn-in"><div class="panel-body"><p class="form-kicker">Ready to publish</p><h2>Export a captioned video</h2><p class="desc">Add styled captions permanently to a video. Use a public media link and timed SRT. Your export runs as a remote job with a shareable result link.</p>
+<label class="label" for="burn-url">Public media link</label><input class="input" id="burn-url" type="url" placeholder="https://…"><p class="hint">YouTube is unsupported. Local videos can be previewed above; remote exports need a public link. Caption SRT is limited to 40 KB and will be included in the public result.</p>
+<label class="label" for="burn-srt">Timed SRT subtitles</label><textarea class="input area" id="burn-srt" rows="5"></textarea>
+<div class="grid2"><div class="field"><label class="label" for="burn-style">Caption style</label><select class="select" id="burn-style"><option value="classic">Classic — white with shadow</option><option value="bold">Bold — yellow with outline</option><option value="minimal">Minimal — white on dark background</option></select></div><div class="field"><label class="label" for="burn-quality">Video quality</label><select class="select" id="burn-quality"><option value="best">Best available</option><option value="1080p">1080p</option><option value="720p">720p</option><option value="480p">480p</option><option value="360p">360p</option></select></div></div><div id="caption-ts"></div><button class="submit" onclick="toolBurn(this)">Export captioned video</button><pre class="output hidden" id="burn-output"></pre></div></section>
+<section class="panel" id="video-describer"><div class="panel-body"><p class="form-kicker">Look beyond the transcript</p><h2>Video describer &amp; Q&amp;A</h2><p class="desc">Ask about visible scenes from four frames sampled across a video. Results describe those sampled moments.</p>
+<label class="label" for="vid-file">Video file, up to 200 MB</label><input class="input" id="vid-file" type="file" accept="video/*"><label class="label" for="vid-q">Optional question</label><input class="input" id="vid-q" placeholder="What is shown in this video?"><button class="submit" onclick="toolVideoDescribe(this)">Describe video</button><pre class="output hidden" id="vid-output"></pre></div></section>
+<section class="panel" id="image-describer"><div class="panel-body"><p class="form-kicker">Make images accessible</p><h2>Image descriptions &amp; alt text</h2><p class="desc">Describe a thumbnail or slide, write alt text, or read visible text. Text reading is approximate and may need correction.</p>
+<label class="label" for="img-file">Image file, up to 20 MB</label><input class="input" id="img-file" type="file" accept="image/*"><div class="field"><label class="label" for="img-kind">Output</label><select class="select" id="img-kind"><option value="describe">Detailed description</option><option value="alt">Accessible alt text</option><option value="ocr">Read visible text</option></select></div><button class="submit" onclick="toolImage(this)">Describe image</button><pre class="output hidden" id="img-output"></pre></div></section>
+<section class="panel" id="clips"><div class="panel-body"><p class="form-kicker">Find a strong moment</p><h2>Shorts &amp; clip finder</h2><p class="desc">Find five candidate moments with hooks, quotes and reasons. Add timed subtitles for suggested clip ranges.</p>
+<label class="label" for="clips-input">Transcript or timed subtitles</label><textarea class="input area" id="clips-input" rows="5"></textarea><button class="submit" onclick="toolClips(this)">Find clips</button><pre class="output hidden" id="clips-output"></pre></div></section>
+<section class="panel" id="safety"><div class="panel-body"><p class="form-kicker">Review before publishing</p><h2>Content safety check</h2><p class="desc">Get an automated safety classification and flagged categories for each part of your text.</p>
+<label class="label" for="safe-input">Transcript or draft</label><textarea class="input area" id="safe-input" rows="5"></textarea><button class="submit" onclick="toolSafety(this)">Check safety</button><pre class="output hidden" id="safe-output"></pre></div></section>
+</div>
+<details class="panel future"><summary>More media tools in development</summary><div class="panel-body"><p>Translated dubbing, audio cleanup and synthetic-video detection need additional service access before they can run. 3D pose tracking and a live voice assistant remain experimental.</p><p class="hint">These tools are not available yet.</p></div></details>
+<details class="panel"><summary>Check service connection</summary><div class="panel-body"><button class="ghost" onclick="toolSelfTest(this)">Check AI connection</button><pre class="output hidden" id="selftest-output"></pre></div></details>
+</main>
+<footer class="site-foot"><div class="wrap foot-legal"><span>© 2026 Prompter</span><a href="../">Back to download &amp; transcribe</a><span>AI powered by NVIDIA</span></div></footer>
+<script src="js/config.js"></script><script src="js/srt.js"></script><script src="js/nvidia.js"></script><script src="js/tools.js"></script><script src="js/app.js"></script>
+</body></html>

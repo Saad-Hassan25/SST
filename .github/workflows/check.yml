@@ -1,0 +1,34 @@
+name: Check website and relay
+
+on:
+  push:
+    paths: ['docs/**', 'worker/**', 'scripts/caption.py', 'tests/**', 'package*.json', '.github/workflows/check.yml']
+  pull_request:
+    paths: ['docs/**', 'worker/**', 'scripts/caption.py', 'tests/**', 'package*.json', '.github/workflows/check.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: npm test
+      - run: npm run check:worker
+      - run: npx playwright install --with-deps chromium
+      - name: Create video fixture
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          mkdir -p .wrangler/test-media
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=160x90:rate=10 -t 1 -pix_fmt yuv420p .wrangler/test-media/sample.mp4
+      - run: npm run test:browser

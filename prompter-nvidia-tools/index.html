@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompter AI Tools (NVIDIA) - Summary, Translate, Subtitles, Vision, Safety</title>
+<meta name="description" content="Prompter AI tools powered by NVIDIA free endpoints: summarize, translate, subtitle any video, chat with transcripts, repurpose content, describe video/images, safety-check and find clips.">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<header class="site-head"><div class="wrap head-bar">
+  <a class="brand" href="./">Prompter <em>/ AI Tools</em></a>
+  <nav class="site-nav"><a href="#settings">Settings</a><a href="#video-subtitles">Video Subtitles</a><a href="#tier1">Tier 1</a><a href="#tier2">Tier 2</a><a href="#tier3">Tier 3</a></nav>
+  <span class="nav-pill"><span class="live-dot"></span> NVIDIA free endpoints</span>
+</div></header>
+
+<main class="wrap">
+  <section class="hero">
+    <p class="eyebrow">Your AI media workspace</p>
+    <h1>Turn any media into <span class="gradient">something useful.</span></h1>
+    <p class="lede">Fifteen tools on top of Prompter's download + transcription core, powered by NVIDIA's free-endpoint models. Paste a transcript, drop a video, get summaries, translations, subtitles, clips and more. Bring your own NVIDIA key - it never leaves your browser (or use the Worker proxy in <span class="mono">/worker</span>).</p>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="panel" id="settings"><div class="panel-body">
+    <p class="form-kicker">Start here</p><h2 class="form-title">Settings &amp; live self-test</h2>
+    <div class="field"><label class="label" for="api-key">NVIDIA API key (nvapi-...)</label>
+      <input class="input" id="api-key" type="password" placeholder="Paste key - stored only in this browser" autocomplete="off">
+      <p class="hint">Get one free: build.nvidia.com - open a model - Generate API Key. Some models also need Apply for Access (see Tier 2/3 notes). Production: hide the key with the Cloudflare Worker proxy instead.</p></div>
+    <div class="row">
+      <button class="submit small" id="save-key">Save key</button>
+      <button class="ghost" onclick="toolSelfTest(this)">Run self-test</button>
+    </div>
+    <pre class="output hidden" id="selftest-output"></pre>
+  </div></section>
+
+  <!-- NEW FEATURE: VIDEO SUBTITLE TRANSLATOR -->
+  <section class="panel accent" id="video-subtitles"><div class="panel-body">
+    <p class="form-kicker">New feature</p><h2 class="form-title">Video Subtitle Translator</h2>
+    <p class="desc">Give it a video (file or URL) plus its subtitles, and watch it with subtitles in another language - e.g. an Arabic video with English subtitles. Step 1: get the SRT from Prompter's <b>Create transcript</b>. Step 2: translate and attach here. Download SRT/VTT, or burn-in with ffmpeg (README).</p>
+    <div class="grid2">
+      <div class="field"><label class="label">Video file</label><input class="input" id="vs-file" type="file" accept="video/*"></div>
+      <div class="field"><label class="label">or Video URL</label><input class="input" id="vs-url" type="url" placeholder="https://...mp4"></div>
+    </div>
+    <button class="ghost" onclick="vsLoadVideo()">Load video</button>
+    <video id="vs-video" class="video hidden" controls crossorigin="anonymous"></video>
+    <div class="field"><label class="label" for="vs-srt">Subtitles (SRT) or plain transcript</label>
+      <textarea class="input area" id="vs-srt" rows="6" placeholder="1&#10;00:00:01,000 --> 00:00:04,000&#10;مرحبا بالعالم"></textarea></div>
+    <div class="grid2">
+      <div class="field"><label class="label">From</label><select class="select" id="vs-from"></select></div>
+      <div class="field"><label class="label">To</label><select class="select" id="vs-to"></select></div>
+    </div>
+    <button class="submit" onclick="vsTranslate(this)">Translate subtitles onto video</button>
+    <div class="row hidden" id="vs-downloads">
+      <button class="ghost" onclick="vsDl('srt')">Download SRT</button>
+      <button class="ghost" onclick="vsDl('vtt')">Download VTT</button>
+    </div>
+    <pre class="output hidden" id="vs-output"></pre>
+  </div></section>
+
+  <h2 class="section-title" id="tier1">Tier 1 - build first (transcript tools)</h2>
+
+  <section class="panel"><div class="panel-body">
+    <h3>1. AI Summary + Chapters</h3><p class="desc">Model: nvidia/nemotron-3-super-120b-a12b (fallbacks: glm-5.3-flash, gpt-oss-20b).</p>
+    <textarea class="input area" id="sum-input" rows="5" placeholder="Paste transcript"></textarea>
+    <button class="submit" onclick="toolSummary(this)">Summarize</button>
+    <pre class="output hidden" id="sum-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>2. Transcript Translator</h3><p class="desc">Model: nvidia/riva-translate-4b-instruct-v2 (37 languages). Do not use v1.1 - deprecated.</p>
+    <textarea class="input area" id="tr-input" rows="5" placeholder="Paste transcript"></textarea>
+    <div class="grid2">
+      <div class="field"><label class="label">From</label><select class="select" id="tr-from"></select></div>
+      <div class="field"><label class="label">To</label><select class="select" id="tr-to"></select></div>
+    </div>
+    <button class="submit" onclick="toolTranslate(this)">Translate</button>
+    <pre class="output hidden" id="tr-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>3. Chat with Video (semantic search)</h3><p class="desc">Models: nvidia/nemotron-3-embed-1b + chat LLM. Index once, ask anything.</p>
+    <textarea class="input area" id="chat-input" rows="5" placeholder="Paste transcript"></textarea>
+    <button class="submit" onclick="toolIndex(this)">Index transcript</button>
+    <div class="row hidden" id="chat-q-row">
+      <input class="input grow" id="chat-q" placeholder="Ask about this video...">
+      <button class="ghost" onclick="toolAsk(this)">Ask</button>
+    </div>
+    <pre class="output hidden" id="chat-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>4. Content Repurposer</h3><p class="desc">One transcript -&gt; blog, YouTube description, X thread, LinkedIn post, newsletter.</p>
+    <textarea class="input area" id="rep-input" rows="5" placeholder="Paste transcript"></textarea>
+    <div class="field"><label class="label">Output</label><select class="select" id="rep-kind">
+      <option value="blog">Blog post</option><option value="yt">YouTube description</option>
+      <option value="x">X thread</option><option value="linkedin">LinkedIn post</option><option value="newsletter">Newsletter</option>
+    </select></div>
+    <button class="submit" onclick="toolRepurpose(this)">Repurpose</button>
+    <pre class="output hidden" id="rep-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>5. Smart Subtitles</h3><p class="desc">Plain transcript or messy SRT -&gt; clean, timed SRT/VTT download (pairs with your burned-in captions roadmap).</p>
+    <textarea class="input area" id="ss-input" rows="5" placeholder="Paste transcript or SRT"></textarea>
+    <button class="submit" onclick="toolSmartSubs(this)">Make subtitles</button>
+    <div class="row hidden" id="ss-downloads">
+      <button class="ghost" onclick="dlSubs('srt')">Download SRT</button>
+      <button class="ghost" onclick="dlSubs('vtt')">Download VTT</button>
+    </div>
+    <pre class="output hidden" id="ss-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>6. Meeting / Podcast Notes</h3><p class="desc">Decisions, action items, open questions, best quotes - from any transcript.</p>
+    <textarea class="input area" id="notes-input" rows="5" placeholder="Paste transcript"></textarea>
+    <button class="submit" onclick="toolNotes(this)">Extract notes</button>
+    <pre class="output hidden" id="notes-output"></pre>
+  </div></section>
+
+  <h2 class="section-title" id="tier2">Tier 2 - new media tools</h2>
+
+  <section class="panel"><div class="panel-body">
+    <h3>7. Video Describer / Video Q&amp;A</h3><p class="desc">Samples frames and reasons over them. Model: meta/llama-3.2-90b-vision-instruct. (For document/image/video/audio in one model, see nvidia/nemotron-3-nano-omni-30b-a3b-reasoning in README.)</p>
+    <input class="input" id="vid-file" type="file" accept="video/*">
+    <input class="input" id="vid-q" placeholder="Optional question, e.g. What product is shown at the end?">
+    <button class="submit" onclick="toolVideoDescribe(this)">Describe video</button>
+    <pre class="output hidden" id="vid-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>8. Image Describer &amp; Alt-Text</h3><p class="desc">Describe, alt-text for accessibility, or OCR-style text extraction. Model: meta/llama-3.2-11b-vision-instruct.</p>
+    <input class="input" id="img-file" type="file" accept="image/*">
+    <div class="field"><label class="label">Mode</label><select class="select" id="img-kind">
+      <option value="describe">Describe</option><option value="alt">Alt-text</option><option value="ocr">Extract text</option>
+    </select></div>
+    <button class="submit" onclick="toolImage(this)">Describe image</button>
+    <pre class="output hidden" id="img-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>9. Shorts / Clip Finder</h3><p class="desc">Finds the 5 strongest 30-60s moments for Shorts/Reels/TikTok. Model: nemotron-3.5-lightning-30b-a3b.</p>
+    <textarea class="input area" id="clips-input" rows="5" placeholder="Paste transcript"></textarea>
+    <button class="submit" onclick="toolClips(this)">Find clips</button>
+    <pre class="output hidden" id="clips-output"></pre>
+  </div></section>
+
+  <section class="panel"><div class="panel-body">
+    <h3>10. Content Safety Check</h3><p class="desc">Pre-publish moderation of transcripts/captions. Model: nvidia/llama-3.1-nemotron-safety-guard-8b-v3 (multilingual guard).</p>
+    <textarea class="input area" id="safe-input" rows="4" placeholder="Paste text to check"></textarea>
+    <button class="submit" onclick="toolSafety(this)">Check safety</button>
+    <pre class="output hidden" id="safe-output"></pre>
+  </div></section>
+
+  <section class="panel gated"><div class="panel-body">
+    <h3>11. Translated Dubbing <span class="tag">Apply first</span></h3>
+    <p class="desc">Pipeline: transcript -&gt; Riva Translate -&gt; Magpie TTS voice clone. <b>Magpie TTS shows "Apply for Access" despite the Free badge</b> - apply on its model page, then this panel activates via the NIM TTS endpoint (server-side, see README). UI + flow are built; the call is disabled until approval because the model is not on the OpenAI-compatible endpoint.</p>
+    <a class="ghost link" href="https://build.nvidia.com/nvidia/magpie-tts-zeroshot" target="_blank" rel="noopener">Apply for Magpie TTS</a>
+  </div></section>
+
+  <section class="panel gated"><div class="panel-body">
+    <h3>12. Audio Cleanup <span class="tag">Server NIM</span></h3>
+    <p class="desc">Background Noise Removal + Studio Voice for podcasters. These are NIM/NVCF services, not browser-callable chat models - deploy the NIM (Downloadable) behind your Worker and wire the upload here (stub in README).</p>
+  </div></section>
+
+  <section class="panel gated"><div class="panel-body">
+    <h3>13. AI-Video Detector <span class="tag">Apply first</span></h3>
+    <p class="desc">Detects AI-generated/synthetic video (trust &amp; verification). Model id: nvidia/ai-synthetic-video-detector. Also <b>Apply for Access</b>.</p>
+    <a class="ghost link" href="https://build.nvidia.com/nvidia/synthetic-video-detector" target="_blank" rel="noopener">Apply for Synthetic Video Detector</a>
+  </div></section>
+
+  <h2 class="section-title" id="tier3">Tier 3 - experimental</h2>
+
+  <section class="panel gated"><div class="panel-body">
+    <h3>14. 3D Pose Tracker <span class="tag">gRPC</span></h3>
+    <p class="desc">Video -&gt; 3D skeleton for fitness/dance creators. NVIDIA 3D Body Pose uses gRPC (grpc.nvcf.nvidia.com:443, mp4 H.264, 50 MB) with a Python client - run it as a GitHub Actions job like your transcription jobs, not from the browser.</p>
+  </div></section>
+
+  <section class="panel gated"><div class="panel-body">
+    <h3>15. Live Voice Assistant <span class="tag">Early access</span></h3>
+    <p class="desc">Nemotron VoiceChat (ASR+LLM+TTS, full-duplex). Shows <b>Apply for Early Access</b>.</p>
+    <a class="ghost link" href="https://build.nvidia.com/nvidia/nemotron-voicechat" target="_blank" rel="noopener">Apply for VoiceChat early access</a>
+  </div></section>
+
+  <p class="foot-note">Models as shown on build.nvidia.com on 2026-10-04 (38 Free Endpoint of 97). Free tier: up to 40 RPM per NVIDIA FAQ; NVIDIA may record inputs/outputs. Re-verify ids before launch. Not recommended for Prompter: Kumo Relational, ising-calibration, autonomous-driving models (wrong audience) - see the PDF guide.</p>
+</main>
+
+<footer class="site-foot"><div class="wrap foot-legal"><span>(c) 2026 Prompter</span><span>Powered by NVIDIA NIM free endpoints</span></div></footer>
+
+<script src="js/config.js"></script>
+<script src="js/srt.js"></script>
+<script src="js/nvidia.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

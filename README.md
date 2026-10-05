@@ -14,6 +14,102 @@
 
 # Prompter — download & transcribe media over GitHub Actions
 
+## NVIDIA AI transform tools
+
+The production tools live in `docs/tools/` and are linked from the homepage and
+each completed transcript. The implementation uses the PDF and prototype in
+`prompter-nvidia-tools/` as references; the prototype remains separate.
+
+Available features:
+
+- Summary, chapters and key moments; transcript and timed-subtitle translation.
+- Semantic search and transcript chat with source passages and supplied timestamps.
+- Editable content repurposing, JSON meeting/podcast notes, ranked clip suggestions.
+- AI caption line segmentation, SRT/VTT exports, translated video caption preview.
+- Image descriptions/alt text, sampled video Q&A, and content safety classification.
+- Styled captions burned into a downloadable MP4 through the existing Actions queue.
+
+Downloads, Parakeet transcription, diarization, notifications, and existing `?job=`
+links continue to use their original routes. The Worker adds `/ai/config`,
+`POST /ai/jobs`, and `GET /ai/jobs/<uuid>`. AI calls use persistent SQLite-backed
+Durable Objects and alarms, with a 240-second timeout per model attempt, at most
+three attempts, scheduled backoff, a restart watchdog, and a 15-minute job window.
+NVIDIA HTTP 202 responses are polled by request ID rather than resubmitted.
+Refreshing a tab can
+resume the saved operation without resubmitting finished batches. Each individual
+AI job has a shareable result link that expires after 24 hours.
+
+The API key stays in the Worker's `NVIDIA_API_KEY` secret. The supplied development
+key is in the ignored `worker/.dev.vars`; it is never shipped in browser assets.
+AI inference has a separate atomic limit of 120 submissions per IP per hour and a
+shared budget of 30 NVIDIA requests/minute. Matching results are cached privately
+by input hash for 24 hours; malformed structured outputs can bypass this cache on
+retry. Requests are validated against a model allowlist, and specialized models
+never silently fall back to generic chat models.
+Nemotron thinking mode is disabled for these user-facing transforms so structured
+caption/notes requests return final answers within their output-token budgets.
+
+Riva's documented language pairs use explicit system tags and English pivoting.
+Auto-detection, Urdu, Persian and Malay use the chat model. Riva subtitle batches
+use a single line with checked cue markers: a multiline batch dropped a cue in
+live testing. Translations preserve original cue boundaries and `Speaker N:` labels.
+Plain text has approximate subtitle timing. Long text tools process all supplied
+text in parts; they reject inputs above 170,000 characters with a clear message.
+
+Caption exports accept public media links and up to 40 KB of timed SRT, with
+classic, bold and minimal styles. Local videos can be previewed, but a remote
+export requires a public link. Exported videos and SRT are public release assets,
+as with existing jobs. NVIDIA trial processing/recording is disclosed on the page.
+
+Dubbing, audio cleanup and synthetic-video detection need additional NVIDIA
+access or separately hosted services; they are explicitly unavailable in the UI.
+Pose tracking and live voice remain parked as specified by the PDF.
+
+### Deploy these changes
+
+Deploy the additive Worker before publishing the frontend. The existing GitHub
+and Turnstile secrets are preserved by `wrangler deploy`.
+
+```powershell
+npm ci
+npx wrangler login
+npx wrangler secret put NVIDIA_API_KEY --config worker/wrangler.toml
+# Paste the NVIDIA key at the prompt; do not put it in a command or public config.
+npx wrangler deploy --config worker/wrangler.toml
+```
+
+Publish the changed `docs/`, `.github/workflows/process.yml`, and
+`scripts/caption.py` together on the default branch using the existing GitHub
+Pages deployment. The workflow needs to support the new `captions` dispatch before
+using caption exports. No hosting migration is required. If enabling Turnstile,
+keep `turnstileSiteKey` in `docs/tools/js/config.js` consistent with the homepage.
+
+### Verify locally
+
+```powershell
+npm ci
+npm test
+npm run check:worker
+# Browser checks use Chromium, or installed Microsoft Edge as a fallback.
+npx playwright install chromium
+# Generate the small video fixture required by browser sampling checks:
+New-Item -ItemType Directory -Force .wrangler/test-media | Out-Null
+ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=160x90:rate=10 -t 1 -pix_fmt yuv420p .wrangler/test-media/sample.mp4
+npm run test:browser
+```
+
+Optional real endpoint checks require Python `requests` and the ignored local key:
+`python tests/nvidia-smoke.py`. To check persistent job execution, run
+`npm run dev:worker -- --var ALLOWED_ORIGIN:http://127.0.0.1:8765`, then
+`python tests/local-worker-smoke.py` or `node tests/browser-smoke.cjs --live` in
+another terminal. Live checks submit only synthetic test content.
+
+Validated on 2026-10-05: 18 Node tests and 3 Python tests, desktop/mobile browser
+regressions, actual ffmpeg caption rendering, live summary/translation/embedding/
+safety responses, and real browser-to-Worker-to-NVIDIA background execution.
+The current Cloudflare login has expired, so this workspace implementation has not
+been deployed to the live site.
+
 Paste a video link on a static web page; a remote GitHub Actions runner downloads
 the video (at a chosen quality) or transcribes it with **NVIDIA Parakeet TDT**, and
 the result comes back to the page. No server of your own beyond a tiny Cloudflare

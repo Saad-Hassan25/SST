@@ -14,3 +14,12 @@ models/
 # Never commit a cookies file (see the COOKIES_FILE env in scripts/fetch.py).
 cookies.txt
 *cookies*.txt
+
+# Local secrets and development dependencies.
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+node_modules/
+test-results/
+playwright-report/

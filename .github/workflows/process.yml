@@ -1,10 +1,10 @@
 name: process
 
 # Triggered by the Cloudflare Worker via the GitHub "repository_dispatch" API.
-# event_type is either "download" or "transcribe" -> available as github.event.action.
+# event_type is download, transcribe or captions -> github.event.action.
 on:
   repository_dispatch:
-    types: [download, transcribe]
+    types: [download, transcribe, captions]
 
 permissions:
   contents: write   # required to create/edit releases and upload assets
@@ -25,6 +25,8 @@ jobs:
       JOB_ID: ${{ github.event.client_payload.job_id }}
       DIARIZE: ${{ github.event.client_payload.diarize }}
       SPEAKERS: ${{ github.event.client_payload.speakers }}
+      SUBTITLES: ${{ github.event.client_payload.subtitles }}
+      CAPTION_STYLE: ${{ github.event.client_payload.caption_style }}
       # Notification. Present only when the user asked to be emailed. NOTIFY_EMAIL is
       # PII on a public repo, so it is masked in "Validate inputs" and never echoed.
       # SITE_URL comes from the Worker (its ALLOWED_ORIGIN), NOT from client input, so
@@ -181,6 +183,16 @@ jobs:
           fi
           python scripts/transcribe.py --input-dir work --out-dir output \
             --models-dir models "${extra[@]}"
+
+      - name: Download video + render captions
+        if: env.MODE == 'captions'
+        run: |
+          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+            --notes "$(printf 'status: running\nstage: downloading\nmode: %s' "$MODE")" || true
+          python scripts/fetch.py --mode video --url "$URL" --quality "$QUALITY" --out-dir work
+          gh release edit "job-$JOB_ID" --repo "$GITHUB_REPOSITORY" \
+            --notes "$(printf 'status: running\nstage: captioning\nmode: %s' "$MODE")" || true
+          python scripts/caption.py --input-dir work --out-dir output
 
       - name: Publish results
         run: |
