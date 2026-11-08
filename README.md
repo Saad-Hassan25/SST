@@ -60,7 +60,7 @@ Captioned link videos and the rendered SRT are **public GitHub release assets**,
 
 1. Choose or drop a video/audio file, or switch to **Video link** and paste a supported public page URL (including Facebook). Uploaded files have an immediate preview; links are fetched by the server. You can also import SRT/VTT/TXT.
 2. Choose Auto, Parakeet (English) or NVIDIA-hosted Whisper Large v3 (multilingual), both locally and on the deployed website. Edit SRT directly or seek through the timed view.
-3. Translate the original transcript; cue boundaries and speaker labels are preserved. Riva is used for supported language pairs, and a text model for auto-detection/Urdu and other unsupported pairs. Changing the source marks its previous translation as stale.
+3. Translate the original transcript; cue boundaries and speaker labels are preserved. Riva is used for supported language pairs. If it is unavailable, returns an empty reply, or loses subtitle cue markers, translation retries with Nemotron 3.5 Lightning 30B A3B, then DeepSeek V4.1 Flash, through the same NVIDIA API. Auto-detection/Urdu and other unsupported pairs start with the text-model backups. Each backup receives the original source and language pair, even if a Riva English pivot fails. Failed models are skipped for remaining batches in that translation. Subtitle timings are preserved; incomplete translations are never published. Changing the source marks its previous translation as stale.
 4. Choose the original or translated subtitle track. Preview captions, download SRT/VTT/TXT, or render a captioned MP4. Translation changes subtitle text, not the spoken audio.
 5. Optionally isolate a sound with local SAM Audio and download target/residual WAVs and videos.
 

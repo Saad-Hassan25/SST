@@ -5,8 +5,10 @@ const DAY = 86400000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CHAT = ["nvidia/nemotron-3-super-120b-a12b", "z-ai/glm-5.3-flash", "openai/gpt-oss-20b"];
 const FAST = "nvidia/nemotron-3.5-lightning-30b-a3b";
+const RIVA = "nvidia/riva-translate-4b-instruct-v2";
+const DEEPSEEK = "deepseek-ai/deepseek-v4.1-flash";
 const EMBED = "nvidia/nemotron-3-embed-1b";
-const ALLOWED = new Set([...CHAT, FAST, "nvidia/riva-translate-4b-instruct-v2",
+const ALLOWED = new Set([...CHAT, FAST, RIVA, DEEPSEEK,
   "meta/llama-3.2-90b-vision-instruct", "meta/llama-3.2-11b-vision-instruct",
   "nvidia/llama-3.1-nemotron-safety-guard-8b-v3"]);
 const reply = (body, status = 200) => Response.json(body, { status });
@@ -59,7 +61,7 @@ export function validateAI(body) {
   if (!Number.isInteger(max_tokens) || max_tokens < 128 || max_tokens > 8192 ||
       !Number.isFinite(temperature) || temperature < 0 || temperature > 1) throw fail("Invalid generation settings.");
   return { kind, payload: { model: payload.model, messages, max_tokens, temperature, stream: false,
-    ...(payload.model.startsWith("nvidia/nemotron-3") ? { chat_template_kwargs: { enable_thinking: false } } : {}) } };
+    ...(payload.model.startsWith("nvidia/nemotron-3") ? { chat_template_kwargs: { enable_thinking: false } } : payload.model === DEEPSEEK ? { chat_template_kwargs: { thinking: false } } : {}) } };
 }
 
 export async function handleAI(request, env) {
@@ -192,6 +194,7 @@ export class AIJob {
     if (job.attempt >= 3 || Date.now() - job.created_at > 15 * 60000) {
       await this.finish(job, "error", "The model could not finish within 15 minutes. Please try again."); return;
     }
+    let callerFallback = false;
     try {
       const { wait } = await this.quota("reserve");
       if (wait) {
@@ -199,12 +202,14 @@ export class AIJob {
         await this.storage.setAlarm(Date.now() + wait + 1000); return;
       }
       const payload = await readLarge(this.storage, "input");
+      callerFallback = [RIVA, DEEPSEEK].includes(payload.model);
       // Only text models can substitute for each other. Never fall back from safety,
       // translation, embeddings or vision to a generic chat model.
       const fallbacks = CHAT.includes(payload.model) || payload.model === FAST
         ? [payload.model, ...CHAT.filter(m => m !== payload.model)] : [payload.model];
       payload.model = fallbacks[Math.min(job.model_index || 0, fallbacks.length - 1)];
       if (payload.model.startsWith("nvidia/nemotron-3")) payload.chat_template_kwargs = { enable_thinking: false };
+      else if (payload.model === DEEPSEEK) payload.chat_template_kwargs = { thinking: false };
       else delete payload.chat_template_kwargs;
       job.attempt++;
       job.status = "running"; job.model = payload.model; job.message = "The model is working. Slow responses can take several minutes.";
@@ -213,7 +218,7 @@ export class AIJob {
       // invocation is interrupted by a restart/deploy, the job still wakes again.
       await this.storage.setAlarm(Date.now() + 250000);
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 240000);
+      const timeout = setTimeout(() => controller.abort(), payload.model === RIVA ? 60000 : payload.model === DEEPSEEK ? 120000 : 240000);
       let response, result;
       try {
         const headers = { Authorization: `Bearer ${this.env.NVIDIA_API_KEY}`, "Content-Type": "application/json" };
@@ -240,6 +245,7 @@ export class AIJob {
         const status = response.status;
         // Do not relay upstream bodies: they may contain headers, submitted text or secrets.
         if (status === 401 || status === 403) { await this.finish(job, "error", "NVIDIA has not authorized inference for the configured key. The site owner needs to check model access."); return; }
+        if (callerFallback) { await this.finish(job, "error", "This specialized NVIDIA model is unavailable. Translation can continue with a backup model."); return; }
         if (![404, 408, 429, 500, 502, 503, 504].includes(status)) {
           await this.finish(job, "error", "The model rejected this input. Try a shorter transcript or a different image."); return;
         }
@@ -248,6 +254,7 @@ export class AIJob {
         await this.retry(job, status === 429 ? "NVIDIA is busy; retrying shortly." : "The model is unavailable; retrying.", retry, status !== 429); return;
       }
       if (job.kind === "chat" && !result?.choices?.[0]?.message?.content?.trim()) {
+        if (callerFallback) { await this.finish(job, "error", "The NVIDIA translation model returned an empty answer. Translation can continue with a backup model."); return; }
         await this.retry(job, "The model returned an empty answer; trying again.", 1000, true); return;
       }
       if (job.kind === "embed" && (!Array.isArray(result?.data) || result.data.length !== payload.input.length ||
@@ -262,6 +269,7 @@ export class AIJob {
       });
       try { await this.env.RATE_LIMIT?.put(`ai-cache:${job.fingerprint}`, JSON.stringify(result), { expirationTtl: 86400 }); } catch { /* optional cache */ }
     } catch (e) {
+      if (callerFallback) { await this.finish(job, "error", "The NVIDIA translation model did not respond. Translation can continue with a backup model."); return; }
       await this.retry(job, e.name === "AbortError" ? "The model was slow; retrying with available capacity." : "Connection to NVIDIA interrupted; retrying.", 5000, true);
     }
   }

@@ -122,7 +122,8 @@ const server = http.createServer(async (req, res) => {
     console.log('PASS translated timings, speaker labels and SRT export');
     omitCue = true; await page.locator('#vs-from').selectOption('ar');
     await page.locator('#video-subtitles .submit').click();
-    await expect(page.locator('#video-subtitles .job-status')).toContainText('omitted a cue');
+    await expect(page.locator('#video-subtitles .job-status')).toContainText('did not preserve every subtitle cue');
+    assert.deepEqual(submissions.slice(-3).map(job=>job.payload.model),['nvidia/riva-translate-4b-instruct-v2','nvidia/nemotron-3.5-lightning-30b-a3b','deepseek-ai/deepseek-v4.1-flash']);
     await expect(page.locator('#vs-downloads')).toBeHidden(); omitCue = false;
     await page.locator('#video-subtitles .submit').click(); await expect(page.locator('#vs-output')).toContainText('2 cues translated');
     assert.equal(submissions.at(-1).refresh, true, 'invalid cached translations need a fresh model result');

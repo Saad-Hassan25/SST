@@ -26,7 +26,7 @@ sys.path.insert(0, str(SAM_ROOT))
 DATA = ROOT / 'work' / 'studio'
 ID = re.compile(r'^[0-9a-f]{32}$')
 CHAT_MODELS = {'nvidia/nemotron-3-super-120b-a12b', 'nvidia/nemotron-3.5-lightning-30b-a3b',
-               'nvidia/riva-translate-4b-instruct-v2'}
+               'nvidia/riva-translate-4b-instruct-v2', 'deepseek-ai/deepseek-v4.1-flash'}
 ASR_URL = 'https://1598d209-5e27-4d3c-8079-4751568b1081.invocation.api.nvcf.nvidia.com/v1/audio/transcriptions'
 JOBS = {}
 LOCK = threading.Lock()
@@ -146,12 +146,12 @@ def process_job(job_id, kind, body):
         update(job_id, status='error', message=message[:1200])
 
 
-def nvidia_request(url, data, content_type='application/json'):
+def nvidia_request(url, data, content_type='application/json', timeout_seconds=240):
     key = os.environ.get('NVIDIA_API_KEY')
     if not key:
         raise ValueError('Set NVIDIA_API_KEY in worker/.dev.vars or your environment, then restart.')
     request = urllib.request.Request(url, data=data, headers={'Authorization': 'Bearer ' + key, 'Content-Type': content_type})
-    deadline = time.monotonic() + 240
+    deadline = time.monotonic() + timeout_seconds
     try:
         while True:
             with urllib.request.urlopen(request, timeout=max(1, deadline - time.monotonic())) as response:
@@ -164,7 +164,7 @@ def nvidia_request(url, data, content_type='application/json'):
             except (ValueError, TypeError, AttributeError):
                 raise ValueError('NVIDIA did not return a valid job ID. Please retry.') from None
             if time.monotonic() + 3 >= deadline:
-                raise ValueError('NVIDIA did not finish within four minutes. Try a shorter input.')
+                raise ValueError('NVIDIA did not finish before the request timed out. Try a shorter input.')
             time.sleep(3)
             request = urllib.request.Request('https://api.nvcf.nvidia.com/v2/nvcf/pexec/status/' + request_id, headers={'Authorization': 'Bearer ' + key})
     except urllib.error.HTTPError as exc:
@@ -320,7 +320,10 @@ class Handler(SimpleHTTPRequestHandler):
                            'temperature': 0, 'max_tokens': 4096}
                 if body['model'].startswith('nvidia/nemotron-3'):
                     payload['chat_template_kwargs'] = {'enable_thinking': False}
-                return self.json(nvidia_request('https://integrate.api.nvidia.com/v1/chat/completions', json.dumps(payload).encode()))
+                elif body['model']=='deepseek-ai/deepseek-v4.1-flash':
+                    payload['chat_template_kwargs'] = {'thinking': False}
+                timeout=60 if body['model']=='nvidia/riva-translate-4b-instruct-v2' else 120 if body['model']=='deepseek-ai/deepseek-v4.1-flash' else 240
+                return self.json(nvidia_request('https://integrate.api.nvidia.com/v1/chat/completions', json.dumps(payload).encode(), timeout_seconds=timeout))
             if path == '/api/jobs' and body.get('kind') in {'sam', 'captions', 'transcribe'}:
                 media_path(body.get('media_id'))
                 job_id = uuid.uuid4().hex

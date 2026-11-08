@@ -164,6 +164,23 @@ test('authentication failures are actionable; repeated timeouts stop after three
   for (let i = 0; i < 3; i++) await instances.get(id).alarm();
   const job = await instances.get(id).storage.get('job'); assert.equal(job.status, 'error'); assert.equal(job.attempt, 3);
 });
+
+test('Riva availability failures return promptly so the caller can rebuild the backup translation prompt',async t=>{
+  for(const outcome of [404,429,503,'empty','timeout']){
+    const {env,instances}=environment(),body=chat('nvidia/riva-translate-4b-instruct-v2');
+    t.mock.method(globalThis,'fetch',async()=>{if(outcome==='timeout')throw Object.assign(new Error('slow'),{name:'AbortError'});return outcome==='empty'?Response.json(completion('')):new Response('private upstream body',{status:outcome});});
+    await worker.fetch(call('/ai/jobs',body),env);await instances.get(ID).alarm();
+    const job=await instances.get(ID).storage.get('job');assert.equal(job.status,'error');assert.equal(job.attempt,1);assert.match(job.message,/backup model/);assert.doesNotMatch(job.message,/private upstream/);
+  }
+});
+
+test('DeepSeek is allowlisted with reasoning disabled and keeps its translation prompt',async t=>{
+  const {env,instances}=environment(),body=chat('deepseek-ai/deepseek-v4.1-flash');
+  body.payload.messages=[{role:'system',content:'Translate from English to Spanish.'},{role:'user',content:'[0] Hello.'}];
+  const input=validateAI(body);assert.deepEqual(input.payload.chat_template_kwargs,{thinking:false});
+  t.mock.method(globalThis,'fetch',async(_url,options)=>{const payload=JSON.parse(options.body);assert.equal(payload.model,body.payload.model);assert.deepEqual(payload.messages,body.payload.messages);assert.deepEqual(payload.chat_template_kwargs,{thinking:false});return Response.json(completion('[0] Hola.'));});
+  await worker.fetch(call('/ai/jobs',body),env);await instances.get(ID).alarm();assert.equal((await instances.get(ID).storage.get('job')).status,'done');
+});
 test('large vision inputs are persisted in bounded chunks', async t => {
   const { env, instances } = environment(); const body = chat('meta/llama-3.2-90b-vision-instruct');
   body.payload.messages[0].content = [{ type: 'text', text: 'Describe four frames.' }, ...Array.from({ length: 4 }, () => ({ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + 'A'.repeat(900000) } }))];

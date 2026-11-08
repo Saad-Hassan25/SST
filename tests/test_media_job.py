@@ -15,6 +15,37 @@ import link_video
 
 
 class BackgroundMediaTests(unittest.TestCase):
+    def test_riva_outage_uses_backups_and_skips_failed_models_on_later_batches(self):
+        cues=[{'start':i*2,'end':i*2+1,'text':'Hello'} for i in range(9)]
+        calls=[]
+        def chat(model,messages):
+            calls.append(model)
+            if 'riva-translate' in model:
+                raise OSError('HTTP 503')
+            if 'nemotron' in model:
+                return '[0] Incomplete translation'
+            import re
+            return ' '.join(marker+' Translated' for marker in re.findall(r'\[\d+\]',messages[1]['content']))
+        result=media_job.translate_cues(cues,'en','es',chat)
+        self.assertEqual(calls,['nvidia/riva-translate-4b-instruct-v2','nvidia/nemotron-3.5-lightning-30b-a3b','deepseek-ai/deepseek-v4.1-flash','deepseek-ai/deepseek-v4.1-flash'])
+        self.assertEqual([(c['start'],c['end']) for c in result],[(c['start'],c['end']) for c in cues])
+        with self.assertRaises(ValueError):
+            media_job.translate_cues(cues,'en','es',lambda *_:'[0] Missing cues')
+
+    def test_backup_after_failed_pivot_receives_original_source_and_languages(self):
+        calls=[]
+        def chat(model,messages):
+            calls.append((model,messages))
+            if len(calls)==1:
+                return '[0] English pivot'
+            if len(calls)==2:
+                raise TimeoutError('Riva unavailable')
+            return '[0] Bonjour'
+        result=media_job.translate_cues([{'start':.2,'end':2.5,'text':'Original Arabic source'}],'ar','fr',chat)
+        self.assertEqual(result[0]['text'],'Bonjour')
+        self.assertEqual(calls[2][1][1]['content'],'[0] Original Arabic source')
+        self.assertIn('from ar to fr',calls[2][1][0]['content'])
+
     def test_redirected_video_without_a_known_extension_is_probed_as_media(self):
         class Downloader:
             def __init__(self,options): self.options=options
