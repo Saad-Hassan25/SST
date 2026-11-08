@@ -384,7 +384,7 @@
   }));
   $('clear-draft').addEventListener('click', () => { $('transcript').value = ''; $('translated').value = ''; translationSource = ''; transcriptChanged(); status('Saved draft cleared.', 'Your chosen media is still available.'); });
   const draft = safeStorage.get();
-  if (draft) { $('transcript').value = draft.transcript || ''; $('translated').value = draft.translated || ''; translationSource = draft.translationSource || ''; timingQuality = draft.timingQuality || 'word'; $('translate-from').value = draft.from || 'auto'; $('translate-to').value = draft.to || 'en'; $('subtitle-track').value = draft.track || 'original'; $('caption-style').value = draft.style || 'classic'; if (draft.transcript) $('draft-note').textContent = 'Your text draft has been restored. Select the media file again to preview or export video.'; }
+  if (draft) { $('transcript').value = draft.transcript || ''; $('translated').value = draft.translated || ''; translationSource = draft.translationSource || ''; timingQuality = draft.timingQuality || 'word'; $('translate-from').value = draft.from || 'auto'; $('translate-to').value = draft.to || 'en'; $('subtitle-track').value = draft.track || 'original'; $('caption-style').value = draft.style || 'classic'; if (draft.transcript) $('draft-note').textContent = 'Your text draft has been restored. Select the original file or paste its video link to export video.'; }
   transcriptChanged();
   // A hostname alone does not enable SAM. A same-origin backend capability check must succeed.
   if (location.hostname === '127.0.0.1' || location.hostname === 'localhost') {

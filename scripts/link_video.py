@@ -2,7 +2,9 @@
 import json
 import math
 from pathlib import Path
+import re
 import subprocess
+import sys
 from urllib.parse import urlsplit
 
 
@@ -38,15 +40,18 @@ def download_link(url, directory):
         'merge_output_format':'mp4','noplaylist':True,'playlistend':1,'quiet':True,'no_warnings':True,'logger':QuietLogger(),
         'max_filesize':512*1024**2,'socket_timeout':30,'retries':2,'fragment_retries':2,
         'match_filter':limit,'progress_hooks':[progress]})
+    stage='download'
     try:
         with yt_dlp.YoutubeDL(options) as downloader:
             downloader.extract_info(url,download=True)
+        stage='locate'
         candidates=[p for p in directory.glob('source.*') if p.suffix.lower() in {'.mp4','.mkv','.webm','.mov','.m4v','.avi'}]
         if not candidates:
             raise VideoSourceError('source_unavailable')
         source=max(candidates,key=lambda p:p.stat().st_size)
         if source.stat().st_size>512*1024**2:
             raise VideoSourceError('source_limit')
+        stage='probe'
         probe=subprocess.run(['ffprobe','-v','error','-show_streams','-show_format','-of','json',str(source)],capture_output=True,check=True,timeout=30)
         metadata=json.loads(probe.stdout);duration=float(metadata['format']['duration'])
         if not math.isfinite(duration) or duration<=0 or duration>1200:
@@ -54,11 +59,16 @@ def download_link(url, directory):
         if not any(stream.get('codec_type')=='audio' for stream in metadata['streams']):
             raise VideoSourceError('source_unavailable')
         audio=directory/'audio.wav'
+        stage='extract audio'
         subprocess.run(['ffmpeg','-v','error','-nostdin','-y','-i',str(source),'-vn','-ar','16000','-ac','1','-c:a','pcm_s16le',str(audio)],capture_output=True,check=True,timeout=300)
         return source,audio
-    except VideoSourceError:
+    except VideoSourceError as error:
+        print(f'Video source {stage}: {error.code}.',file=sys.stderr)
         raise
-    except Exception:
+    except Exception as error:
+        # Log only stage/type/status, never downloader messages containing source URLs.
+        status=re.search(r'HTTP Error (\d{3})',str(error))
+        print(f'Video source {stage} failed ({type(error).__name__})'+(' HTTP '+status[1] if status else '')+'.',file=sys.stderr)
         raise VideoSourceError('source_unavailable') from None
 
 
