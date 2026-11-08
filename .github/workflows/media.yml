@@ -1,0 +1,28 @@
+name: Process uploaded recording
+on:
+  repository_dispatch:
+    types: [uploaded-media]
+permissions:
+  contents: read
+concurrency:
+  group: media-${{ github.event.client_payload.job_id }}
+  cancel-in-progress: false
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      MEDIA_JOB_ID: ${{ github.event.client_payload.job_id }}
+      WHISPER_BRIDGE_KEY: ${{ secrets.WHISPER_BRIDGE_KEY }}
+      NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
+      GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
+      GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install NVIDIA speech client
+        run: pip install nvidia-riva-client==2.28.0
+      - name: Transcribe, optionally translate, and send requested result email
+        run: python scripts/media_job.py

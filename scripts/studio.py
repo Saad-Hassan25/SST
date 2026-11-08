@@ -218,10 +218,35 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header('Content-Length', str(len(data)))
         self.end_headers(); self.wfile.write(data)
 
+    def speech_proxy(self):
+        path = urllib.parse.urlsplit(self.path).path.removeprefix('/api')
+        if not re.fullmatch(r'/speech/jobs(?:/[a-f0-9-]{36}(?:/(?:start|chunks/\d+|files/[a-z.]+))?)?', path):
+            return self.json({'error': 'Unknown speech route.'}, 404)
+        length = int(self.headers.get('Content-Length', 0))
+        if length > 2000000:
+            return self.json({'error': 'Audio chunk is too large.'}, 413)
+        headers = {'Origin': 'https://prompter.neuralforge.tech', 'User-Agent': 'Prompter-Local-Studio/1.0',
+                   'Content-Type': self.headers.get('Content-Type', 'application/json')}
+        if self.headers.get('Authorization'):
+            headers['Authorization'] = self.headers['Authorization']
+        request = urllib.request.Request('https://yt-actions-relay.yt-actions-relay.workers.dev' + path,
+            data=self.rfile.read(length) if self.command == 'POST' else None, headers=headers, method=self.command)
+        try:
+            with urllib.request.urlopen(request, timeout=45) as response:
+                data = response.read(); status = response.status; content_type = response.headers.get('Content-Type', 'application/json')
+        except urllib.error.HTTPError as error:
+            data = error.read(); status = error.code; content_type = 'application/json'
+        except (OSError, TimeoutError):
+            return self.json({'error': 'Could not connect to the background processor. Retry when your connection is available.'}, 502)
+        self.send_response(status); self.send_header('Content-Type', content_type); self.send_header('Content-Length', str(len(data)))
+        self.send_header('Cache-Control', 'no-store'); self.end_headers(); self.wfile.write(data)
+
     def do_GET(self):
         path = urllib.parse.urlsplit(self.path).path
         if not self.trusted():
             return self.json({'error': 'Open the local app using its 127.0.0.1 URL.'}, 403)
+        if path.startswith('/api/speech/jobs'):
+            return self.speech_proxy()
         if path == '/api/config':
             return self.json({'local': True, 'sam': importlib.util.find_spec('sam_audio') is not None,
                 'nvidia': bool(os.environ.get('NVIDIA_API_KEY')), 'multilingual': WHISPER_PYTHON.is_file()})
@@ -249,6 +274,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self.json({'error': 'Origin not allowed.'}, 403)
         path = urllib.parse.urlsplit(self.path).path
         try:
+            if path.startswith('/api/speech/jobs'):
+                return self.speech_proxy()
             length = int(self.headers.get('Content-Length', 0))
             if path == '/api/uploads':
                 suffix = Path(urllib.parse.unquote(self.headers.get('X-Filename', 'media.mp4'))).suffix.lower()
@@ -269,6 +296,20 @@ class Handler(SimpleHTTPRequestHandler):
             if length <= 0 or length > 1000000:
                 return self.json({'error': 'Request is empty or too large.'}, 413)
             body = json.loads(self.rfile.read(length))
+            if path == '/api/audio':
+                from sam_audio_studio.runtime import configure_native_libraries
+                configure_native_libraries()
+                from sam_audio_studio.media import binary, probe, run
+                source = media_path(body.get('media_id'))
+                info = probe(source)
+                if not info.has_audio or info.duration > 1200:
+                    raise ValueError('Choose a recording with audio and a duration of up to 20 minutes.')
+                destination = source.parent / 'speech16k.wav'
+                run([binary('ffmpeg'), '-v', 'error', '-nostdin', '-y', '-i', str(source), '-vn', '-ar', '16000', '-ac', '1', '-c:a', 'pcm_s16le', str(destination)])
+                self.send_response(200); self.send_header('Content-Type', 'audio/wav'); self.send_header('Content-Length', str(destination.stat().st_size)); self.end_headers()
+                with destination.open('rb') as stream:
+                    self.copyfile(stream, self.wfile)
+                return
             if path == '/api/chat':
                 if body.get('model') not in CHAT_MODELS:
                     raise ValueError('Unsupported model.')

@@ -1,11 +1,13 @@
 // Only the relay holds credentials. Browsers submit short 16 kHz PCM WAV chunks.
 const ENDPOINT = 'https://1598d209-5e27-4d3c-8079-4751568b1081.invocation.api.nvcf.nvidia.com/v1/audio/transcriptions';
 import { handleWhisper, whisperAvailable } from './whisper.js';
+import { handleMediaJobs, mediaJobsAvailable } from './media-jobs.js';
 const reply = (value, status = 200) => Response.json(value, { status });
 export async function handleSpeech(request, env) {
   const path = new URL(request.url).pathname;
   if (path === '/speech/config' && request.method === 'GET')
-    return reply({ available: !!(env.NVIDIA_API_KEY && env.AI_JOBS), languages: whisperAvailable(env) ? ['en', 'multilingual'] : ['en'], whisper: whisperAvailable(env), model: 'NVIDIA Parakeet CTC', chunk_seconds: 60 });
+    return reply({ available: !!(env.NVIDIA_API_KEY && env.AI_JOBS), languages: whisperAvailable(env) ? ['en', 'multilingual'] : ['en'], whisper: whisperAvailable(env), background:mediaJobsAvailable(env), model: 'NVIDIA Parakeet CTC', chunk_seconds: 60 });
+  if (path === '/speech/jobs' || path.startsWith('/speech/jobs/')) return handleMediaJobs(request,env);
   if (path.startsWith('/speech/whisper/')) return handleWhisper(request, env);
   if (!['/speech/transcribe', '/speech/whisper'].includes(path) || request.method !== 'POST') return reply({ error: 'Not found.' }, 404);
   if (request.headers.get('Origin') !== env.ALLOWED_ORIGIN) return reply({ error: 'Origin not allowed.' }, 403);

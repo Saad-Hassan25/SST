@@ -2,9 +2,9 @@ name: Check website and relay
 
 on:
   push:
-    paths: ['docs/**', 'worker/**', 'scripts/*.py', '.github/workflows/whisper.yml', 'tests/**', 'package*.json', '.github/workflows/check.yml']
+    paths: ['docs/**', 'worker/**', 'scripts/*.py', '.github/workflows/media.yml', '.github/workflows/whisper.yml', 'tests/**', 'package*.json', '.github/workflows/check.yml']
   pull_request:
-    paths: ['docs/**', 'worker/**', 'scripts/*.py', '.github/workflows/whisper.yml', 'tests/**', 'package*.json', '.github/workflows/check.yml']
+    paths: ['docs/**', 'worker/**', 'scripts/*.py', '.github/workflows/media.yml', '.github/workflows/whisper.yml', 'tests/**', 'package*.json', '.github/workflows/check.yml']
 
 permissions:
   contents: read

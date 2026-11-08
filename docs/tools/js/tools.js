@@ -30,6 +30,7 @@
     const panel = button.closest(".panel-body");
     let status = panel.querySelector(".job-status");
     if (!status) { status = document.createElement("div"); status.className = "job-status"; status.setAttribute("role", "status"); panel.appendChild(status); }
+    status.dataset.state = "running"; button.dataset.loading = "true";
     status.textContent = "Preparing your request…";
     button.textContent = "Working…";
     NVIDIA.onProgress = job => {
@@ -49,7 +50,7 @@
       status.prepend(message);
       // The saved form remains available, allowing a retry to resume queued batches.
     } finally {
-      active = false; NVIDIA.onProgress = null;
+      active = false; NVIDIA.onProgress = null; status.dataset.state = "idle"; delete button.dataset.loading;
       buttons.forEach((b, i) => { b.disabled = disabled[i]; }); button.textContent = label;
     }
   }

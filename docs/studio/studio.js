@@ -1,7 +1,7 @@
 (async function () {
   const $ = id => document.getElementById(id), cfg = window.PROMPTER_CONFIG, relay = cfg.proxyUrl.replace(/\/ai$/, '');
   const params = new URLSearchParams(location.search);
-  let local = false, busy = false, file, mediaURL, mediaID, trackURL, translationSource = '', activeCues = [], controller, timingQuality = 'word';
+  let local = false, busy = false, file, mediaURL, mediaID, trackURL, translationSource = '', activeCues = [], controller, timingQuality = 'word', backgroundAvailable = false, uploadingRecording = false, activeRecordingId, appliedRecordingId;
   const safeStorage = { get() { try { return JSON.parse(sessionStorage.getItem('prompter_studio') || 'null'); } catch { return null; } }, set(value) { try { sessionStorage.setItem('prompter_studio', JSON.stringify(value)); } catch {} } };
   function save() { safeStorage.set({ transcript: $('transcript').value, translated: $('translated').value, translationSource, timingQuality, speechModel: $('speech-model').value, sourceLanguage: $('source-language').value, from: $('translate-from').value, to: $('translate-to').value, track: $('subtitle-track').value, style: $('caption-style').value }); }
   function status(title, message, progress, error = false) {
@@ -27,6 +27,15 @@
     if (id === 'translate-to' && code === 'auto') continue;
     $(id).append(new Option(name, code, false, code === (id === 'translate-from' ? 'auto' : 'en')));
   }
+  for (const [code,name] of cfg.languages) if (code !== 'auto') $('job-translate-to').append(new Option(name,code,false,code==='en'));
+  function deliveryChanged() {
+    $('recipient-field').classList.toggle('hidden',!$('delivery-email').checked);
+    $('job-language-field').classList.toggle('hidden',!$('job-translate').checked);
+    $('transcribe').textContent=$('delivery-email').checked?'Upload & email results':'Transcribe media';
+  }
+  for (const id of ['delivery-wait','delivery-email','job-translate']) $(id).addEventListener('change',deliveryChanged);
+  if(params.get('delivery')==='email'){$('delivery-email').checked=true;deliveryChanged();}
+  window.addEventListener('beforeunload',event=>{if(uploadingRecording){event.preventDefault();event.returnValue='';}});
   function cues(text) {
     if (!text.trim()) throw new Error('Create or import a transcript first.');
     if (!text.includes('-->')) throw new Error('This transcript has no timing. Transcribe your media or import SRT/VTT before exporting subtitles.');
@@ -135,11 +144,14 @@
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
-  const controls = ['transcribe', 'translate', 'export-video', 'separate', 'import-file', 'media-file', 'transcript', 'translated', 'speech-model', 'source-language', 'translate-from', 'translate-to', 'subtitle-track', 'caption-style', 'clear-draft'];
+  const controls = ['transcribe', 'translate', 'export-video', 'separate', 'import-file', 'media-file', 'transcript', 'translated', 'speech-model', 'source-language', 'translate-from', 'translate-to', 'subtitle-track', 'caption-style', 'clear-draft','delivery-wait','delivery-email','result-email','job-translate','job-translate-to'];
   async function operation(title, action, cancellable = false) {
     if (busy) return;
     busy = true; controller = new AbortController(); const old = controls.map(id => $(id).disabled);
+    const trigger=document.activeElement?.tagName==='BUTTON'?document.activeElement:null, originalButton=trigger?.innerHTML;
+    if(trigger){trigger.setAttribute('aria-busy','true');const spinner=document.createElement('span');spinner.className='spinner';spinner.setAttribute('aria-hidden','true');trigger.replaceChildren(spinner,document.createTextNode(' Working…'));}
     controls.forEach(id => { $(id).disabled = true; }); $('activity').classList.add('busy'); $('cancel-operation').classList.toggle('hidden', !cancellable);
+    $('activity').setAttribute('aria-busy','true');
     status(title, 'Preparing…', 0);
     NVIDIA.onProgress = job => status(title, job.message || 'Waiting for the model…');
     try { await action(controller.signal); }
@@ -147,9 +159,72 @@
       const queuedWhisper = !local && ($('speech-model').value === 'whisper' || $('source-language').value !== 'en');
       status(controller.signal.aborted ? 'Stopped waiting.' : 'Could not finish.', controller.signal.aborted ? queuedWhisper ? 'Queued Whisper work may continue. Retry the same media in this tab to reconnect; your edits are safe.' : 'Your transcript edits are still available.' : error.message, undefined, !controller.signal.aborted);
     }
-    finally { busy = false; controls.forEach((id, i) => { $(id).disabled = old[i]; }); $('activity').classList.remove('busy'); $('progress').classList.add('hidden'); $('cancel-operation').classList.add('hidden'); NVIDIA.onProgress = null; save(); }
+    finally { busy = false; uploadingRecording=false; controls.forEach((id, i) => { $(id).disabled = old[i]; }); $('activity').classList.remove('busy'); $('activity').setAttribute('aria-busy','false'); if(trigger){trigger.innerHTML=originalButton;trigger.removeAttribute('aria-busy');} $('progress').classList.add('hidden'); $('cancel-operation').classList.add('hidden'); NVIDIA.onProgress = null; save(); }
   }
   $('cancel-operation').addEventListener('click', () => { controller?.abort(); StudioMedia.cancelRenderer(); });
+  const speechBase=()=>local?'/api/speech':relay+'/speech';
+  const validRecipient=value=>!!value && value.length<=254 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
+  function renderRecordingJob(job) {
+    $('recording-job').classList.remove('hidden');
+    $('recording-job').classList.toggle('processing',['uploading','queued','running'].includes(job.status)||job.notification==='pending');
+    $('recording-job').setAttribute('aria-busy',String(['uploading','queued','running'].includes(job.status)||job.notification==='pending'));
+    $('recording-job-title').textContent=job.status==='done'?'Your recording is ready':job.status==='error'?'Recording needs attention':job.status==='uploading'?'Uploading your audio':'Processing in the background';
+    $('recording-job-message').textContent=job.message || 'Preparing…'; $('recording-job-progress').value=job.progress || 0;
+    $('recording-job-safe').classList.toggle('hidden',!['queued','running','done'].includes(job.status));
+    const url=new URL(location.href);url.search='';url.hash='';url.searchParams.set('media_job',job.job_id);
+    $('recording-job-link').href=url.href;
+    $('recording-job-files').replaceChildren();
+    if(job.result?.files) for(const name of Object.keys(job.result.files)) {
+      const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='↓ '+name;
+      button.addEventListener('click',()=>PrompterTools.download(job.result.files[name],name));$('recording-job-files').append(button);
+    }
+  }
+  $('copy-recording-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('recording-job-link').href);$('copy-recording-link').textContent='Copied';}catch{$('copy-recording-link').textContent='Copy the saved result URL';}});
+  function applyRecording(job) {
+    const result=job.result;if(!result)return;
+    $('transcript').value=SRT.toSRT(result.cues);timingQuality=result.timing_quality || 'word';
+    if(result.translated_cues?.length){$('translated').value=SRT.toSRT(result.translated_cues);translationSource=$('transcript').value;$('translate-to').value=job.translate_to;$('subtitle-track').value='translated';}
+    transcriptChanged();appliedRecordingId=job.job_id;
+  }
+  async function watchRecording(id,{signal,apply=false,sourceFile=file,sourceText=$('transcript').value}={}) {
+    activeRecordingId=id; const started=Date.now();let failures=0;
+    while(Date.now()-started<46*60000 && activeRecordingId===id){
+      if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
+      let job;
+      try{job=await http(speechBase()+'/jobs/'+id,signal?{signal}:{});failures=0;}
+      catch(error){if(signal?.aborted||++failures>=5)throw error;await new Promise(resolve=>setTimeout(resolve,3000));continue;}
+      renderRecordingJob(job);
+      if(job.status==='done'){
+        if(apply && appliedRecordingId!==id && (params.has('media_job') || (file===sourceFile && $('transcript').value===sourceText)))applyRecording(job);
+        status('Your recording is ready.',job.message,1);
+        if(job.notification!=='pending')return job;
+      }
+      if(job.status==='error'){status('Could not process the recording.',job.message,undefined,true);return job;}
+      if(job.status==='uploading')return job;
+      if(busy)status('Background processor',job.message,job.progress);
+      await new Promise(resolve=>setTimeout(resolve,2500));
+    }
+  }
+  async function queueRecording(samples,language,speechModel,signal){
+    const email=$('delivery-email').checked?$('result-email').value.trim():'';
+    if($('delivery-email').checked && !validRecipient(email))throw new Error('Enter a valid recipient email address.');
+    if(samples.length>20*60*16000)throw new Error('Background processing supports recordings up to 20 minutes. Split longer recordings into parts.');
+    const count=Math.ceil(samples.length/(60*16000));if(!count)throw new Error('No audio was found.');
+    const job=await http(speechBase()+'/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:speechModel,language,chunk_count:count,email,name:file.name,translate_to:$('job-translate').checked?$('job-translate-to').value:null}),signal});
+    activeRecordingId=job.job_id;uploadingRecording=true;
+    try{sessionStorage.setItem('prompter_media_job',job.job_id);}catch{}
+    const auth={Authorization:'Bearer '+job.upload_token,'Content-Type':'audio/wav'};
+    for(let index=0;index<count;index++){
+      renderRecordingJob({...job,status:'uploading',message:`Uploading audio section ${index+1} of ${count}. Keep this tab open.`,progress:index/count});
+      await http(speechBase()+'/jobs/'+job.job_id+'/chunks/'+index,{method:'POST',headers:auth,body:StudioMedia.wavBlob(samples.subarray(index*60*16000,(index+1)*60*16000)),signal});
+    }
+    await http(speechBase()+'/jobs/'+job.job_id+'/start',{method:'POST',headers:{Authorization:auth.Authorization,'Content-Type':'application/json'},body:'{}',signal});
+    uploadingRecording=false;
+    renderRecordingJob({...job,status:'queued',message:email?'Upload complete. Your transcript and subtitles will be emailed when ready.':'Upload complete. You can wait here or reopen the saved result link.',notification:email?'pending':'none'});
+    const watchOptions={apply:true,sourceFile:file,sourceText:$('transcript').value};
+    if(email){status('Upload complete. You can close this tab.', 'Processing continues in the background. Your transcript and subtitle files will be emailed when ready.');watchRecording(job.job_id,watchOptions).catch(()=>{$('recording-job-message').textContent='Connection interrupted. Processing continues; use your saved link or wait for the result email.';});}
+    else await watchRecording(job.job_id,{...watchOptions,signal});
+  }
   async function webWhisper(audio, language, signal) {
     const bytes = new Uint8Array(await audio.arrayBuffer()), lang = new TextEncoder().encode(language), input = new Uint8Array(bytes.length + lang.length);
     input.set(bytes); input.set(lang, bytes.length);
@@ -179,6 +254,21 @@
     const language = $('source-language').value, speechModel = $('speech-model').value;
     if (speechModel === 'parakeet' && language !== 'en') throw new Error('Parakeet supports English here. Choose Auto or Whisper for this language.');
     const useWhisper = speechModel === 'whisper' || language !== 'en';
+    const emailDelivery=$('delivery-email').checked;
+    if(emailDelivery && !validRecipient($('result-email').value.trim()))throw new Error('Enter a valid recipient email address.');
+    if((!local && backgroundAvailable) || emailDelivery || $('job-translate').checked){
+      if(!local && !backgroundAvailable)throw new Error('Background processing is not available yet. Please retry shortly.');
+      if(Number.isFinite($('preview').duration) && $('preview').duration>1200)throw new Error('Background processing supports recordings up to 20 minutes. Split longer recordings into parts.');
+      let audioFile=file;
+      if(local){
+        const id=await upload();status('Preparing your recording…','Extracting audio with local FFmpeg. Your video stays on this machine.');
+        const response=await fetch('/api/audio',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({media_id:id}),signal});
+        if(!response.ok){const value=await response.json();throw new Error(value.error || 'Could not extract audio.');}
+        audioFile=new File([await response.blob()],'speech.wav',{type:'audio/wav'});
+      }
+      const samples=await StudioMedia.audioSamples(audioFile,message=>status('Preparing your recording…',message),signal);
+      await queueRecording(samples,language,speechModel,signal);return;
+    }
     let result;
     if (local) result = await localJob('transcribe', { language, speech_model: speechModel });
     else {
@@ -291,7 +381,7 @@
     $('speech-note').textContent = 'Checking NVIDIA speech options…';
     $('speech-model').options[2].disabled = true;
     try {
-      const state = await http(relay + '/speech/config');
+      const state = await http(relay + '/speech/config');backgroundAvailable=!!state.background;
       $('speech-note').textContent = state.whisper ? 'English defaults to Parakeet word timing. Whisper runs on NVIDIA through a queued runner, with approximate segment timing. Audio is deleted after processing; results expire in one hour.' : 'Parakeet supports English. Import subtitles in any language to translate and export them.';
       if (state.whisper) { $('speech-model').options[2].disabled = false; for (const [code, name] of cfg.languages) if (code !== 'en') $('source-language').append(new Option(name, code)); }
       if (!state.available) { $('transcribe').disabled = true; $('speech-note').textContent = 'Speech service is not configured yet. Import subtitles or use a public media link in the downloader.'; }
@@ -302,6 +392,8 @@
   if (savedSpeechModel && !savedSpeechModel.disabled) $('speech-model').value = savedSpeechModel.value;
   if (draft?.sourceLanguage && [...$('source-language').options].some(option => option.value === draft.sourceLanguage)) $('source-language').value = draft.sourceLanguage;
   for (const id of ['speech-model', 'source-language']) $(id).addEventListener('change', save);
+  const mediaJob=params.get('media_job') || (()=>{try{return sessionStorage.getItem('prompter_media_job');}catch{return null;}})();
+  if(mediaJob && /^[0-9a-f-]{36}$/i.test(mediaJob))watchRecording(mediaJob,{apply:params.has('media_job')}).catch(error=>{$('recording-job').classList.remove('hidden');$('recording-job-message').textContent=error.message;});
   // Completed legacy jobs can enter this workspace with timing intact.
   const sourceJob = params.get('source_job');
   if (sourceJob && /^[0-9a-f-]{36}$/i.test(sourceJob)) {

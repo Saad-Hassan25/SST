@@ -45,6 +45,10 @@ class_name = "AIJob"
 name = "WHISPER_JOBS"
 class_name = "WhisperJob"
 
+[[durable_objects.bindings]]
+name = "MEDIA_JOBS"
+class_name = "MediaJob"
+
 [[migrations]]
 tag = "ai-jobs-v1"
 new_sqlite_classes = ["AIJob"]
@@ -52,3 +56,7 @@ new_sqlite_classes = ["AIJob"]
 [[migrations]]
 tag = "whisper-jobs-v1"
 new_sqlite_classes = ["WhisperJob"]
+
+[[migrations]]
+tag = "uploaded-media-v1"
+new_sqlite_classes = ["MediaJob"]

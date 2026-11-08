@@ -23,12 +23,16 @@ const server = http.createServer(async (req, res) => {
   try {
     const context = await browser.newContext({ viewport: { width: 1440, height: 1050 } }), page = await context.newPage(), errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const jobs = new Map();
-    await page.route('https://fonts.**/**', route => route.abort());
-    await page.route('https://yt-actions-relay.yt-actions-relay.workers.dev/**', async route => {
+    const jobs = new Map();let background=false,recording,uploads=[],sealed=false,finished=false,holdUpload;
+    await context.route('https://fonts.**/**', route => route.abort());
+    await context.route('https://yt-actions-relay.yt-actions-relay.workers.dev/**', async route => {
       const request = route.request(), url = new URL(request.url());
-      assert.ok(!request.headers().authorization, 'No credential may reach browser requests');
-      if (url.pathname === '/speech/config') return route.fulfill({ json: { available: true, whisper: true } });
+      assert.ok(!request.headers().authorization || request.headers().authorization==='Bearer test-upload-token', 'Browser credentials are limited to its own upload token');
+      if (url.pathname === '/speech/config') return route.fulfill({ json: { available: true, whisper: true, background } });
+      if (url.pathname === '/speech/jobs' && request.method()==='POST') {recording=request.postDataJSON();return route.fulfill({json:{job_id:'23456789-1234-4123-8123-123456789abc',upload_token:'test-upload-token',status:'uploading'}});}
+      if (/\/speech\/jobs\/[^/]+\/chunks\/\d+$/.test(url.pathname)) {if(url.pathname.endsWith('/0'))await new Promise(resolve=>{holdUpload=resolve;});uploads.push(Number(url.pathname.split('/').at(-1)));return route.fulfill({json:{ok:true}});}
+      if (/\/speech\/jobs\/[^/]+\/start$/.test(url.pathname)) {assert.equal(uploads.length,recording.chunk_count);sealed=true;return route.fulfill({json:{status:'queued'}});}
+      if (/\/speech\/jobs\/[^/]+$/.test(url.pathname)) return route.fulfill({json:{job_id:'23456789-1234-4123-8123-123456789abc',status:finished?'done':'queued',notification:finished?'sent':'pending',message:finished?'Your result email was sent.':'Processing continues in the background.',translate_to:'ar',progress:finished?1:0,...(finished?{result:{cues:[{start:0,end:1,text:'Background recording'}],translated_cues:[{start:0,end:1,text:'Translated recording'}],files:{'transcript.txt':'Background recording','translated.srt':'1\n00:00:00,000 --> 00:00:01,000\nTranslated recording'},timing_quality:'word'}}:{})}});
       if (url.pathname === '/speech/whisper') return route.fulfill({ json: { job_id: '12345678-1234-4123-8123-123456789abc', status: 'queued' } });
       if (url.pathname.startsWith('/speech/whisper/')) return route.fulfill({ json: { status: 'done', text: 'Hello from Whisper.', words: [], segments: [{ start: 0, end: 4, text: 'Hello from Whisper.' }], timing_quality: 'approximate' } });
       if (url.pathname === '/speech/transcribe') {
@@ -98,5 +102,23 @@ const server = http.createServer(async (req, res) => {
     await expect(page.locator('#filename')).toHaveText('target.mp4');
     await expect(page.locator('#tab-transcript')).toHaveAttribute('aria-selected', 'true');
     console.log('PASS local SAM is gated by backend capabilities');
+    // Every chunk is acknowledged before email mode says it is safe to close.
+    await page.unroute('**/api/config');background=true;await page.goto(base);await expect(page.locator('#transcribe')).toBeEnabled();
+    await page.locator('#media-file').setInputFiles('.wrangler/test-media/studio.mp4');
+    await page.evaluate(()=>{StudioMedia.audioSamples=async()=>new Float32Array(61*16000);});
+    await page.locator('#delivery-email').check();await page.locator('#result-email').fill('invalid');await page.locator('#transcribe').click();
+    await expect(page.locator('#activity-message')).toContainText('valid recipient');assert.equal(recording,undefined);
+    await page.locator('#result-email').fill('test-recipient@example.com');await page.locator('#job-translate').check();await page.locator('#job-translate-to').selectOption('ar');
+    await page.locator('#transcribe').click();await expect(page.locator('#transcribe')).toHaveAttribute('aria-busy','true');
+    await expect(page.locator('#recording-job-safe')).toBeHidden();assert.equal(sealed,false);
+    await expect.poll(()=>typeof holdUpload).toBe('function');holdUpload();
+    await expect(page.locator('#recording-job-safe')).toBeVisible();await expect(page.locator('#transcribe')).toBeEnabled();assert.deepEqual(uploads,[0,1]);assert.equal(recording.email,'test-recipient@example.com');assert.equal(recording.translate_to,'ar');
+    const resultURL=await page.locator('#recording-job-link').getAttribute('href');await page.close();finished=true;
+    const restored=await context.newPage();await restored.goto(resultURL);await expect(restored.locator('#transcript')).toHaveValue(/Background recording/);await expect(restored.locator('#translated')).toHaveValue(/Translated recording/);await expect(restored.locator('#recording-job-message')).toContainText('email was sent');await expect(restored.locator('#recording-job-files button')).toHaveCount(2);
+    console.log('PASS multi-chunk email queue, safe-close gating, invalid email validation, and result recovery after closing the tab');
+    await restored.goto(base+'/all-tools.html');await expect(restored.locator('.tool-card')).toHaveCount(18);await restored.locator('#tool-search').fill('email');await expect(restored.locator('.tool-card:not(.hidden)')).toHaveCount(2);
+    await restored.locator('#tool-search').fill('');await restored.locator('[data-filter=local]').click();await expect(restored.locator('.tool-card:not(.hidden)')).toHaveCount(1);await expect(restored.locator('.tool-card:not(.hidden)')).toContainText('LOCAL ONLY');
+    await restored.locator('[data-filter=all]').click();await restored.setViewportSize({width:390,height:844});await restored.screenshot({path:'.wrangler/catalog-mobile.png',fullPage:true});assert.ok(await restored.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    console.log('PASS searchable tools directory and mobile navigation');
   } finally { await browser.close(); await new Promise(resolve => server.close(resolve)); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

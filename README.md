@@ -1,6 +1,6 @@
 # Prompter Studio
 
-A single workspace for video/audio ? timed transcript ? translation ? subtitles ? captioned MP4, in navy, cream and coral. The frontend stays on GitHub Pages. Existing media downloads and AI tools remain available.
+A single workspace for video/audio -> timed transcript -> translation -> subtitles -> captioned MP4, in navy, cream and coral. The frontend stays on GitHub Pages. Existing media downloads and AI tools remain available.
 
 ## Run locally on this machine
 
@@ -33,6 +33,21 @@ uv pip install --python .venv/Scripts/python.exe nvidia-riva-client==2.28.0
 
 This small environment isolates Riva's newer protobuf requirements from SAM Audio's older dependencies. It downloads no model weights.
 
+## Delivery and finding tools
+
+Open **All tools** in the navigation, or `all-tools.html`, for a searchable directory with descriptions and direct links to all 18 tools. The directory labels SAM Audio as local-only. Studio and advanced AI tools show animated, accessible processing indicators, with reduced-motion support.
+
+Uploaded recordings have two delivery modes:
+
+- **Wait here:** watch server progress and download the finished transcript and subtitle files.
+- **Email me the results:** enter a recipient, optionally select transcript/subtitle translation, and start. Keep the tab open while audio is prepared and every chunk is uploaded. Only after the complete upload is sealed does the interface confirm it is safe to close. Processing then runs independently of the browser.
+
+Both web delivery modes use the private background processor for the entire recording. The email includes TXT/SRT/VTT attachments (including translated files when selected), plus a saved result link available for three days. Recipient addresses and upload tokens are excluded from public status and dispatch payloads. Addresses are cleared after the notification attempt. SMTP failures do not discard completed results; the saved page reports the failure and offers downloads. Incomplete uploads expire after 30 minutes; queued/active processing times out after 45 minutes. Input audio is deleted on completion, failure or timeout. Result pages can be reopened through `?media_job=<uuid>`, including from a different browser.
+
+The existing repository `GMAIL_USERNAME` and `GMAIL_APP_PASSWORD` secrets provide the sender; each user supplies their own recipient in the form. `.github/workflows/media.yml` transcribes with NVIDIA, optionally translates while preserving cue boundaries, and uses the same email sender as the legacy link workflow. The recipient never appears in Actions dispatches, releases, or logs. Email delivery was verified through mocked SMTP composition/attachment/failure tests; no unsolicited live test message is sent.
+
+Background recordings are limited to **20 minutes**. Browser source files can be up to 250 MB; the local studio extracts audio with native FFmpeg for sources up to 1 GB. Local email mode forwards only audio to the same remote processor; SAM separation and video rendering still run locally. Captioned MP4 rendering needs the original video in the open browser or local app, so result emails contain transcript/subtitle files rather than a rendered video.
+
 ## The workflow
 
 1. Choose or drop a video/audio file. Preview it immediately, or import SRT/VTT/TXT.
@@ -48,14 +63,14 @@ Text drafts are saved in sessionStorage for this browser tab; media files must b
 ## GitHub Pages behavior
 
 - Uploads: up to 250 MB in the browser; up to 1 GB with the local backend.
-- Web upload transcription: choose Parakeet for English or Whisper Large v3 for multilingual input. The browser sends mono WAV chunks of up to 60 seconds. Whisper uses a GitHub Actions bridge to NVIDIA gRPC; audio stays in private Durable Object storage, is fetched by an authenticated runner, and is deleted on completion/error or after a 20-minute timeout. No audio/transcript is published in releases or logs. Results expire in one hour. Jobs share the NVIDIA request budget and can wait for a runner. Retrying the same media/language in the same tab reconnects to saved jobs.
-- Captioned MP4: renders in-browser with single-thread ffmpeg.wasm, without requiring cross-origin isolation headers unavailable on Pages. First use downloads ~31 MB from the pinned jsDelivr package and open Noto subtitle fonts from their source repositories. Extra script fonts load only when needed. Browser export supports ?250 MB inputs, ?40 KB subtitles, and a 30-minute render timeout. Local exports use native FFmpeg.
+- Web upload transcription: choose Parakeet for English or Whisper Large v3 for multilingual input. All audio chunks upload first, then a private GitHub Actions/NVIDIA job processes the complete recording. Choose wait or email delivery, with optional translation. Background results are retained for three days. The original one-chunk Whisper endpoint remains available for older clients.
+- Captioned MP4: renders in-browser with single-thread ffmpeg.wasm, without requiring cross-origin isolation headers unavailable on Pages. First use downloads ~31 MB from the pinned jsDelivr package and open Noto subtitle fonts from their source repositories. Extra script fonts load only when needed. Browser export supports up to 250 MB inputs, up to 40 KB subtitles, and a 30-minute render timeout. Local exports use native FFmpeg.
 - SAM Audio: visibly disabled on GitHub Pages. Even a static localhost preview cannot enable it; the same-origin local backend must report it available.
 - `download.html` keeps the original public-link/Actions workflow. Old root `?job=` links redirect there. Completed jobs can open the new studio using `?source_job=` with their timestamps intact. `tools/` retains the existing advanced AI tools and uses the same theme.
 
 ### Publish the update
 
-The frontend uses the existing GitHub Pages branch (`main`, `/docs`). Deploy the Worker first, then push the frontend and `.github/workflows/whisper.yml`. No hosting migration is needed.
+The frontend uses the existing GitHub Pages branch (`main`, `/docs`). Deploy the Worker first, then push the frontend and the Actions workflows (`whisper.yml` and `media.yml`). No hosting migration is needed.
 
 ```powershell
 npx wrangler login

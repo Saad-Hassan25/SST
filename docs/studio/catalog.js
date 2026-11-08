@@ -1,0 +1,5 @@
+(function(){
+  const search=document.getElementById('tool-search'),cards=[...document.querySelectorAll('.tool-card')],filters=[...document.querySelectorAll('[data-filter]')];let category='all';
+  function render(){const query=search.value.trim().toLowerCase();let count=0;for(const card of cards){const visible=(category==='all'||card.dataset.category===category)&&card.textContent.toLowerCase().includes(query);card.classList.toggle('hidden',!visible);if(visible)count++;}document.getElementById('tool-count').textContent=count+' '+(count===1?'tool':'tools')+' to work with.';document.getElementById('catalog-empty').classList.toggle('hidden',count>0);filters.forEach(button=>button.setAttribute('aria-pressed',String(button.dataset.filter===category)));}
+  search.addEventListener('input',render);filters.forEach(button=>button.addEventListener('click',()=>{category=button.dataset.filter;render();}));document.getElementById('reset-tools').addEventListener('click',()=>{search.value='';category='all';render();search.focus();});render();
+})();

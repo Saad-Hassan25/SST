@@ -10,6 +10,7 @@ import { handleAI } from "./ai.js";
 import { handleSpeech } from "./speech.js";
 export { AIJob } from "./ai.js";
 export { WhisperJob } from "./whisper.js";
+export { MediaJob } from "./media-jobs.js";
 
 const MODES = new Set(["download", "transcribe", "captions"]);
 const QUALITIES = new Set(["best", "1080p", "720p", "480p", "360p"]);
@@ -20,7 +21,7 @@ function cors(env) {
   return {
     "Access-Control-Allow-Origin": env.ALLOWED_ORIGIN || "*",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Access-Control-Max-Age": "86400",
   };
 }

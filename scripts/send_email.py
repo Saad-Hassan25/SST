@@ -25,18 +25,14 @@ def log(*a):
     print(*a, file=sys.stderr, flush=True)
 
 
-def main():
+def send_notification(to, subject, text, html="", attachments=None):
     user = os.environ.get("GMAIL_USERNAME", "").strip()
     pw = os.environ.get("GMAIL_APP_PASSWORD", "")
-    to = os.environ.get("EMAIL_TO", "").strip()
-    subject = os.environ.get("EMAIL_SUBJECT", "Your Prompter job")
-    text = os.environ.get("EMAIL_TEXT", "Your Prompter job has an update.")
-    html = os.environ.get("EMAIL_HTML", "")
 
     if not (user and pw and to):
         # No credentials configured, or no recipient: nothing to do, and not an error.
         log("notify: email not configured or no recipient; skipping.")
-        return
+        return False
 
     msg = EmailMessage()
     msg["From"] = user
@@ -45,6 +41,8 @@ def main():
     msg.set_content(text)
     if html:
         msg.add_alternative(html, subtype="html")
+    for name, content in (attachments or {}).items():
+        msg.add_attachment(content, subtype="plain", charset="utf-8", filename=name)
 
     try:
         ctx = ssl.create_default_context()
@@ -52,8 +50,19 @@ def main():
             s.login(user, pw)
             s.send_message(msg)
         log("notify: email sent.")  # deliberately no recipient in the log
+        return True
     except Exception as e:  # noqa: BLE001 - never fail the job over a notification
         log(f"notify: could not send email ({e.__class__.__name__}). Continuing.")
+        return False
+
+
+def main():
+    return send_notification(
+        os.environ.get("EMAIL_TO", "").strip(),
+        os.environ.get("EMAIL_SUBJECT", "Your Prompter job"),
+        os.environ.get("EMAIL_TEXT", "Your Prompter job has an update."),
+        os.environ.get("EMAIL_HTML", ""),
+    )
 
 
 if __name__ == "__main__":
