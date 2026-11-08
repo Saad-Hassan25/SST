@@ -49,8 +49,9 @@ export class WhisperJob {
           body: JSON.stringify({ event_type: 'whisper', client_payload: { job_id: input.id } }), signal: AbortSignal.timeout(20000) });
       } catch { /* The caller may retry later; never silently resubmit an uncertain dispatch. */ }
       if (!response?.ok) {
-        await this.storage.put('job', { ...job, status: 'error', message: 'Could not start the Whisper runner. Try again later.' });
-        await clearLarge(this.storage, 'audio'); return reply({ error: 'Could not start the Whisper runner. Try again later.' }, 502);
+        const message = response ? `GitHub rejected the Whisper dispatch (HTTP ${response.status}). The site owner needs to check the relay GitHub credentials.` : 'Could not connect to the Whisper runner. Try again later.';
+        await this.storage.put('job', { ...job, status: 'error', message });
+        await clearLarge(this.storage, 'audio'); return reply({ error: message }, 502);
       }
       return reply({ job_id: input.id, status: 'queued' }, 202);
     }

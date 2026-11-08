@@ -25,6 +25,7 @@ AI_RATE_LIMIT_PER_HOUR = "120"
 #     Only if you enable Cloudflare Turnstile on the frontend. If unset, the
 #     Worker skips bot verification.
 #   wrangler secret put NVIDIA_API_KEY       # required for the AI tools
+#   wrangler secret put WHISPER_BRIDGE_KEY   # same random secret in repository Actions secrets
 
 # --- Per-IP rate limiting (ON) -----------------------------------------------
 # Created with: wrangler kv namespace create RATE_LIMIT

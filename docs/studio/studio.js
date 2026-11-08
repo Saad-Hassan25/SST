@@ -143,7 +143,10 @@
     status(title, 'Preparing…', 0);
     NVIDIA.onProgress = job => status(title, job.message || 'Waiting for the model…');
     try { await action(controller.signal); }
-    catch (error) { status(error.name === 'AbortError' || controller.signal.aborted ? 'Operation cancelled.' : 'Could not finish.', controller.signal.aborted ? 'Your transcript edits are still available.' : error.message, undefined, !controller.signal.aborted); }
+    catch (error) {
+      const queuedWhisper = !local && ($('speech-model').value === 'whisper' || $('source-language').value !== 'en');
+      status(controller.signal.aborted ? 'Stopped waiting.' : 'Could not finish.', controller.signal.aborted ? queuedWhisper ? 'Queued Whisper work may continue. Retry the same media in this tab to reconnect; your edits are safe.' : 'Your transcript edits are still available.' : error.message, undefined, !controller.signal.aborted);
+    }
     finally { busy = false; controls.forEach((id, i) => { $(id).disabled = old[i]; }); $('activity').classList.remove('busy'); $('progress').classList.add('hidden'); $('cancel-operation').classList.add('hidden'); NVIDIA.onProgress = null; save(); }
   }
   $('cancel-operation').addEventListener('click', () => { controller?.abort(); StudioMedia.cancelRenderer(); });
@@ -295,7 +298,8 @@
     }
     catch { $('transcribe').disabled = true; $('speech-note').textContent = 'Upload transcription needs the updated relay. Import subtitles or use the media downloader in the meantime.'; }
   }
-  if (draft?.speechModel && !$('speech-model').querySelector(`option[value="${draft.speechModel}"]`)?.disabled) $('speech-model').value = draft.speechModel;
+  const savedSpeechModel = [...$('speech-model').options].find(option => option.value === draft?.speechModel);
+  if (savedSpeechModel && !savedSpeechModel.disabled) $('speech-model').value = savedSpeechModel.value;
   if (draft?.sourceLanguage && [...$('source-language').options].some(option => option.value === draft.sourceLanguage)) $('source-language').value = draft.sourceLanguage;
   for (const id of ['speech-model', 'source-language']) $(id).addEventListener('change', save);
   // Completed legacy jobs can enter this workspace with timing intact.

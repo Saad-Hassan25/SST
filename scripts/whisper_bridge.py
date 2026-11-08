@@ -17,7 +17,7 @@ def main():
         raise ValueError('Invalid job ID.')
     # Fixed trusted destination: repository_dispatch cannot redirect a secret.
     base = 'https://yt-actions-relay.yt-actions-relay.workers.dev/speech/whisper/' + job
-    headers = {'Authorization': 'Bearer ' + os.environ['WHISPER_BRIDGE_KEY']}
+    headers = {'Authorization': 'Bearer ' + os.environ['WHISPER_BRIDGE_KEY'], 'User-Agent': 'Prompter-Whisper-Bridge/1.0'}
 
     def post(path, payload):
         request = urllib.request.Request(base + path, data=json.dumps(payload).encode(), headers={**headers, 'Content-Type': 'application/json'})
