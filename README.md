@@ -37,7 +37,7 @@ This small environment isolates Riva's newer protobuf requirements from SAM Audi
 
 Open **All tools** in the navigation, or `all-tools.html`, for a searchable directory with descriptions and direct links to all 18 tools. The directory labels SAM Audio as local-only. Studio and advanced AI tools show animated, accessible processing indicators, with reduced-motion support.
 
-Uploaded recordings have two delivery modes:
+Uploaded recordings and public video links have two delivery modes:
 
 - **Wait here:** watch server progress and download the finished transcript and subtitle files.
 - **Email me the results:** enter a recipient, optionally select transcript/subtitle translation, and start. Keep the tab open while audio is prepared and every chunk is uploaded. Only after the complete upload is sealed does the interface confirm it is safe to close. Processing then runs independently of the browser.
@@ -46,11 +46,19 @@ Both web delivery modes use the private background processor for the entire reco
 
 The existing repository `GMAIL_USERNAME` and `GMAIL_APP_PASSWORD` secrets provide the sender; each user supplies their own recipient in the form. `.github/workflows/media.yml` transcribes with NVIDIA, optionally translates while preserving cue boundaries, and uses the same email sender as the legacy link workflow. The recipient never appears in Actions dispatches, releases, or logs. Email delivery was verified through mocked SMTP composition/attachment/failure tests; no unsolicited live test message is sent.
 
-Background recordings are limited to **20 minutes**. Browser source files can be up to 250 MB; the local studio extracts audio with native FFmpeg for sources up to 1 GB. Local email mode forwards only audio to the same remote processor; SAM separation and video rendering still run locally. Captioned MP4 rendering needs the original video in the open browser or local app, so result emails contain transcript/subtitle files rather than a rendered video.
+Background recordings are limited to **20 minutes**. Browser source files can be up to 250 MB; the local studio extracts audio with native FFmpeg for sources up to 1 GB. Local email mode forwards only audio to the same remote processor; SAM separation and video rendering still run locally. For uploaded files, captioned MP4 rendering needs the original video in the open browser or local app. For video links, the server can render the captioned MP4 and include its download link in the result email.
+
+## Public video links
+
+Choose **Video link** in the studio. Paste a public Facebook video page, another yt-dlp-supported website URL, or a direct video link; an MP4 extension is not required. Select the spoken language and model, optionally translate, and leave **Automatically export a captioned video** checked to get an MP4 as well as TXT/SRT/VTT. Choose **Wait here** or **Email me the results**. Processing continues after the server accepts the link.
+
+To revise captions, edit the transcript or translation, choose the subtitle track and caption style, and click **Export captioned video**. The server downloads that source again and burns your edited SRT without retranscribing it. The video URL and supplied SRT stay in private job storage and are absent from GitHub dispatches/status/logs. Downloading uses yt-dlp with the existing optional cookie/proxy settings. Limits: 20 minutes, 512 MB, 720p preferred. Sites can block automated downloads; private, login-required and region-blocked links may fail. YouTube is currently rejected by the hosted downloader; upload the file instead.
+
+Captioned link videos and the rendered SRT are **public GitHub release assets**, cleaned up by the existing three-day release retention job. This is disclosed beside the link input. Transcript-only link jobs keep their text results private behind the unguessable result link. Linked sources are temporary runner files and are removed when processing ends. SAM Audio needs an uploaded local file; it does not accept website page URLs.
 
 ## The workflow
 
-1. Choose or drop a video/audio file. Preview it immediately, or import SRT/VTT/TXT.
+1. Choose or drop a video/audio file, or switch to **Video link** and paste a supported public page URL (including Facebook). Uploaded files have an immediate preview; links are fetched by the server. You can also import SRT/VTT/TXT.
 2. Choose Auto, Parakeet (English) or NVIDIA-hosted Whisper Large v3 (multilingual), both locally and on the deployed website. Edit SRT directly or seek through the timed view.
 3. Translate the original transcript; cue boundaries and speaker labels are preserved. Riva is used for supported language pairs, and a text model for auto-detection/Urdu and other unsupported pairs. Changing the source marks its previous translation as stale.
 4. Choose the original or translated subtitle track. Preview captions, download SRT/VTT/TXT, or render a captioned MP4. Translation changes subtitle text, not the spoken audio.

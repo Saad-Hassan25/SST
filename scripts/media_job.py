@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -110,14 +111,34 @@ def main():
             payload['chat_template_kwargs']={'enable_thinking':False}
         return nvidia('https://integrate.api.nvidia.com/v1/chat/completions',json.dumps(payload).encode())['choices'][0]['message']['content']
 
-    manifest, files, success = None, {}, False
+    manifest, files, success, video_url = None, {}, False, None
+    workspace=tempfile.TemporaryDirectory(prefix='prompter-link-')
+    source_video,link_audio=None,None
     try:
         manifest=get('/manifest')
+        if manifest.get('source_url'):
+            from link_video import download_link
+            post('/progress',{'progress':0,'message':'Downloading your video link…'})
+            source_video,link_audio=download_link(manifest['source_url'],Path(workspace.name)/'input')
         use_whisper=manifest['model']=='whisper' or manifest['language']!='en'
         all_cues, approximate, offset = [], False, 0
         count=manifest['chunk_count']
+        if link_audio:
+            with wave.open(str(link_audio),'rb') as linked:
+                link_duration=linked.getnframes()/16000;count=max(1,int((link_duration+59.999)//60))
+        if manifest.get('subtitles'):
+            from link_video import subtitle_cues
+            all_cues=subtitle_cues(manifest['subtitles']);count=0
         for index in range(count):
-            audio=get('/chunks/'+str(index),True)
+            if link_audio:
+                with wave.open(str(link_audio),'rb') as linked:
+                    linked.setpos(index*60*16000);frames=linked.readframes(60*16000)
+                buffer=io.BytesIO()
+                with wave.open(buffer,'wb') as chunk:
+                    chunk.setnchannels(1);chunk.setsampwidth(2);chunk.setframerate(16000);chunk.writeframes(frames)
+                audio=buffer.getvalue()
+            else:
+                audio=get('/chunks/'+str(index),True)
             if len(audio)>2000000:
                 raise ValueError('Audio chunk too large.')
             with wave.open(io.BytesIO(audio),'rb') as stream:
@@ -154,13 +175,17 @@ def main():
         if manifest.get('translate_to'):
             translated=translate_cues(all_cues,manifest['language'],manifest['translate_to'],chat,lambda done,total:post('/progress',{'progress':.8+.19*done/total,'message':f'Translated {done} of {total} subtitle cues.'}))
         files=exports(all_cues,translated)
-        post('/result',{'cues':all_cues,'translated_cues':translated,'files':files,'timing_quality':'approximate' if approximate else 'word'})
+        if manifest.get('render_video'):
+            from link_video import publish_captioned
+            post('/progress',{'progress':.95,'message':'Rendering subtitles onto your linked video…'})
+            video_url=publish_captioned(source_video,files.get('translated.srt',files['subtitles.srt']),manifest['caption_style'],Path(workspace.name)/'output',job_id)
+        post('/result',{'cues':all_cues,'translated_cues':translated,'files':files,'timing_quality':'approximate' if approximate else 'word',**({'video_url':video_url} if video_url else {})})
         success=True
         print('Recording processed. Private input audio removed.')
     except Exception as error:
         print('Recording processing failed ('+type(error).__name__+'). No media, transcript or recipient was logged.',file=sys.stderr)
         try:
-            post('/result',{'error':'Processing failed.'})
+            post('/result',{'error':'Processing failed.','error_code':getattr(error,'code','processing')})
         except Exception:
             pass
     finally:
@@ -170,6 +195,8 @@ def main():
                 url='https://prompter.neuralforge.tech/?media_job='+job_id
                 subject=('Your Prompter recording is ready: ' if success else 'Your Prompter recording needs attention: ')+manifest['name']
                 text=('Your transcript and subtitle files are attached.\n' if success else 'Your recording could not be processed. Open the result page for details and try again.\n')+'\nResult page: '+url+'\nResults are available for three days.'
+                if success and video_url:
+                    text+='\nCaptioned video download: '+video_url
                 if success and approximate:
                     text+='\nWhisper subtitle timing is approximate. Review it against the recording before publishing.'
                 notification='sent' if send_notification(manifest['email'],subject,text,attachments=files if success else None) else 'failed'
@@ -177,6 +204,7 @@ def main():
                 post('/notification',{'status':notification})
             except Exception:
                 print('Could not update notification status.',file=sys.stderr)
+        workspace.cleanup()
     if not success:
         sys.exit(1)
 

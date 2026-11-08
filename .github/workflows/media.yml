@@ -1,9 +1,9 @@
-name: Process uploaded recording
+name: Process recording or video link
 on:
   repository_dispatch:
     types: [uploaded-media]
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: media-${{ github.event.client_payload.job_id }}
   cancel-in-progress: false
@@ -17,6 +17,9 @@ jobs:
       NVIDIA_API_KEY: ${{ secrets.NVIDIA_API_KEY }}
       GMAIL_USERNAME: ${{ secrets.GMAIL_USERNAME }}
       GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+      GH_TOKEN: ${{ github.token }}
+      YT_COOKIES_B64: ${{ secrets.YT_COOKIES_B64 }}
+      YTDLP_PROXY: ${{ secrets.YTDLP_PROXY }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,5 +27,36 @@ jobs:
           python-version: '3.11'
       - name: Install NVIDIA speech client
         run: pip install nvidia-riva-client==2.28.0
+      - name: Check recording source
+        id: source
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          url = 'https://yt-actions-relay.yt-actions-relay.workers.dev/speech/jobs/' + os.environ['MEDIA_JOB_ID'] + '/manifest'
+          request = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['WHISPER_BRIDGE_KEY'], 'User-Agent': 'Prompter-Media-Processor/1.0'})
+          with urllib.request.urlopen(request, timeout=40) as response:
+              linked = bool(json.load(response).get('source_url'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              output.write('link=' + str(linked).lower() + '\n')
+          PY
+      - name: Install video downloader and renderer
+        if: steps.source.outputs.link == 'true'
+        run: |
+          pip install -U yt-dlp
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-noto-core
+      - name: Configure optional download cookies
+        if: steps.source.outputs.link == 'true'
+        run: |
+          if [ -n "$YT_COOKIES_B64" ]; then
+            python - <<'PY'
+          import os, base64
+          from pathlib import Path
+          path = Path(os.environ['RUNNER_TEMP']) / 'media-cookies.txt'
+          path.write_bytes(base64.b64decode(os.environ['YT_COOKIES_B64'], validate=True))
+          path.chmod(0o600)
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write('COOKIES_FILE=' + str(path) + '\n')
+          PY
+          fi
       - name: Transcribe, optionally translate, and send requested result email
         run: python scripts/media_job.py

@@ -32,7 +32,7 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/speech/jobs' && request.method()==='POST') {recording=request.postDataJSON();return route.fulfill({json:{job_id:'23456789-1234-4123-8123-123456789abc',upload_token:'test-upload-token',status:'uploading'}});}
       if (/\/speech\/jobs\/[^/]+\/chunks\/\d+$/.test(url.pathname)) {if(url.pathname.endsWith('/0'))await new Promise(resolve=>{holdUpload=resolve;});uploads.push(Number(url.pathname.split('/').at(-1)));return route.fulfill({json:{ok:true}});}
       if (/\/speech\/jobs\/[^/]+\/start$/.test(url.pathname)) {assert.equal(uploads.length,recording.chunk_count);sealed=true;return route.fulfill({json:{status:'queued'}});}
-      if (/\/speech\/jobs\/[^/]+$/.test(url.pathname)) return route.fulfill({json:{job_id:'23456789-1234-4123-8123-123456789abc',status:finished?'done':'queued',notification:finished?'sent':'pending',message:finished?'Your result email was sent.':'Processing continues in the background.',translate_to:'ar',progress:finished?1:0,...(finished?{result:{cues:[{start:0,end:1,text:'Background recording'}],translated_cues:[{start:0,end:1,text:'Translated recording'}],files:{'transcript.txt':'Background recording','translated.srt':'1\n00:00:00,000 --> 00:00:01,000\nTranslated recording'},timing_quality:'word'}}:{})}});
+      if (/\/speech\/jobs\/[^/]+$/.test(url.pathname)) return route.fulfill({json:{job_id:'23456789-1234-4123-8123-123456789abc',status:finished?'done':'queued',notification:finished?'sent':'pending',message:finished?'Your result email was sent.':'Processing continues in the background.',translate_to:'ar',progress:finished?1:0,...(finished?{result:{cues:[{start:0,end:1,text:'Background recording'}],translated_cues:[{start:0,end:1,text:'Translated recording'}],files:{'transcript.txt':'Background recording','translated.srt':'1\n00:00:00,000 --> 00:00:01,000\nTranslated recording'},timing_quality:'word',...(recording?.render_video?{video_url:'https://github.com/Saad-Hassan25/SST/releases/download/job-23456789-1234-4123-8123-123456789abc/captioned.mp4'}:{})}}:{})}});
       if (url.pathname === '/speech/whisper') return route.fulfill({ json: { job_id: '12345678-1234-4123-8123-123456789abc', status: 'queued' } });
       if (url.pathname.startsWith('/speech/whisper/')) return route.fulfill({ json: { status: 'done', text: 'Hello from Whisper.', words: [], segments: [{ start: 0, end: 4, text: 'Hello from Whisper.' }], timing_quality: 'approximate' } });
       if (url.pathname === '/speech/transcribe') {
@@ -116,6 +116,24 @@ const server = http.createServer(async (req, res) => {
     const resultURL=await page.locator('#recording-job-link').getAttribute('href');await page.close();finished=true;
     const restored=await context.newPage();await restored.goto(resultURL);await expect(restored.locator('#transcript')).toHaveValue(/Background recording/);await expect(restored.locator('#translated')).toHaveValue(/Translated recording/);await expect(restored.locator('#recording-job-message')).toContainText('email was sent');await expect(restored.locator('#recording-job-files button')).toHaveCount(2);
     console.log('PASS multi-chunk email queue, safe-close gating, invalid email validation, and result recovery after closing the tab');
+    // Website video pages are queued server-side; edited captions are sent unchanged.
+    recording=undefined;uploads=[];sealed=false;
+    await restored.goto(base+'/?source=link');await expect(restored.locator('#transcribe')).toBeEnabled();
+    await expect(restored.locator('#video-link-input')).toBeVisible();await expect(restored.locator('#upload-card')).toBeHidden();
+    await restored.locator('#video-url').fill('https://youtu.be/blocked');await restored.locator('#transcribe').click();
+    await expect(restored.locator('#activity-message')).toContainText('YouTube is unavailable');assert.equal(recording,undefined);
+    await restored.locator('#video-url').fill('https://www.facebook.com/watch/?v=123456789');
+    await restored.locator('#source-language').selectOption('en');await restored.getByRole('button',{name:'Choose caption style'}).click();await restored.locator('#caption-style').selectOption('bold');await restored.locator('#tab-transcript').click();
+    await restored.locator('#transcribe').click();await expect(restored.locator('#transcribe')).toBeEnabled();
+    assert.equal(recording.source_url,'https://www.facebook.com/watch/?v=123456789');assert.equal(recording.chunk_count,0);assert.equal(recording.render_video,true);assert.equal(recording.caption_style,'bold');assert.ok(sealed);assert.deepEqual(uploads,[]);
+    await expect(restored.locator('#recording-job-files a')).toHaveText(/Download captioned MP4/);
+    await expect(restored.locator('#transcript')).toHaveValue(/Background recording/);
+    const edited='1\n00:00:00,160 --> 00:00:01,000\nMy edited captions';
+    await restored.locator('#transcript').fill(edited);await restored.locator('#tab-subtitles').click();await restored.locator('#subtitle-track').selectOption('original');
+    await restored.locator('#export-video').click();await expect(restored.locator('#export-video')).toBeEnabled();
+    assert.equal(recording.subtitles.trim(),edited);await expect(restored.locator('#transcript')).toHaveValue(edited);
+    await restored.setViewportSize({width:390,height:844});await restored.screenshot({path:'.wrangler/link-source-mobile.png',fullPage:true});assert.ok(await restored.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));
+    console.log('PASS Facebook-style page link input, server-rendered video download, no browser upload, edited subtitle export, and mobile layout');
     await restored.goto(base+'/all-tools.html');await expect(restored.locator('.tool-card')).toHaveCount(18);await restored.locator('#tool-search').fill('email');await expect(restored.locator('.tool-card:not(.hidden)')).toHaveCount(2);
     await restored.locator('#tool-search').fill('');await restored.locator('[data-filter=local]').click();await expect(restored.locator('.tool-card:not(.hidden)')).toHaveCount(1);await expect(restored.locator('.tool-card:not(.hidden)')).toContainText('LOCAL ONLY');
     await restored.locator('[data-filter=all]').click();await restored.setViewportSize({width:390,height:844});await restored.screenshot({path:'.wrangler/catalog-mobile.png',fullPage:true});assert.ok(await restored.evaluate(()=>document.documentElement.scrollWidth<=innerWidth));

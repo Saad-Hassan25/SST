@@ -1,6 +1,7 @@
 (async function () {
   const $ = id => document.getElementById(id), cfg = window.PROMPTER_CONFIG, relay = cfg.proxyUrl.replace(/\/ai$/, '');
   const params = new URLSearchParams(location.search);
+  let sourceMode='upload';
   let local = false, busy = false, file, mediaURL, mediaID, trackURL, translationSource = '', activeCues = [], controller, timingQuality = 'word', backgroundAvailable = false, uploadingRecording = false, activeRecordingId, appliedRecordingId;
   const safeStorage = { get() { try { return JSON.parse(sessionStorage.getItem('prompter_studio') || 'null'); } catch { return null; } }, set(value) { try { sessionStorage.setItem('prompter_studio', JSON.stringify(value)); } catch {} } };
   function save() { safeStorage.set({ transcript: $('transcript').value, translated: $('translated').value, translationSource, timingQuality, speechModel: $('speech-model').value, sourceLanguage: $('source-language').value, from: $('translate-from').value, to: $('translate-to').value, track: $('subtitle-track').value, style: $('caption-style').value }); }
@@ -31,10 +32,14 @@
   function deliveryChanged() {
     $('recipient-field').classList.toggle('hidden',!$('delivery-email').checked);
     $('job-language-field').classList.toggle('hidden',!$('job-translate').checked);
-    $('transcribe').textContent=$('delivery-email').checked?'Upload & email results':'Transcribe media';
+    $('transcribe').textContent=sourceMode==='link'?($('delivery-email').checked?'Process link & email results':'Process video link'):($('delivery-email').checked?'Upload & email results':'Transcribe media');
   }
+  function sourceChanged(mode){sourceMode=mode;$('source-upload').setAttribute('aria-pressed',String(mode==='upload'));$('source-link').setAttribute('aria-pressed',String(mode==='link'));$('video-link-input').classList.toggle('hidden',mode!=='link');$('upload-card').classList.toggle('hidden',mode==='link');$('media-kind').textContent=mode==='link'?'Video link':file?(/^(audio)/.test(file.type)?'Audio':'Video'):'Ready when you are';deliveryChanged();}
+  $('source-upload').addEventListener('click',()=>sourceChanged('upload'));$('source-link').addEventListener('click',()=>sourceChanged('link'));
+  function inputVideoURL(){let url;try{url=new URL($('video-url').value.trim());}catch{throw new Error('Paste a valid public video link.');}if(!['http:','https:'].includes(url.protocol)||url.username||url.password)throw new Error('Use a public http or https video link.');if(['youtube.com','youtu.be','youtube-nocookie.com'].some(host=>url.hostname===host||url.hostname.endsWith('.'+host)))throw new Error('YouTube is unavailable on the hosted downloader. Upload the video file instead.');return url.href;}
   for (const id of ['delivery-wait','delivery-email','job-translate']) $(id).addEventListener('change',deliveryChanged);
   if(params.get('delivery')==='email'){$('delivery-email').checked=true;deliveryChanged();}
+  if(params.get('source')==='link')sourceChanged('link');
   window.addEventListener('beforeunload',event=>{if(uploadingRecording){event.preventDefault();event.returnValue='';}});
   function cues(text) {
     if (!text.trim()) throw new Error('Create or import a transcript first.');
@@ -97,7 +102,7 @@
     const valid = /\.(mp4|mkv|mov|webm|avi|m4v|mp3|wav|flac|ogg|m4a|aac)$/i.test(value.name);
     if (!valid && !/^(audio|video)\//.test(value.type)) return status('Choose a media file.', 'Use a video or audio format such as MP4, MP3 or WAV.', undefined, true);
     if (value.size > (local ? 1024 : 250) * 1024 * 1024) return status('This file is too large.', local ? 'Choose a file under 1 GB.' : 'Choose a file under 250 MB, or use the local launcher.', undefined, true);
-    file = value; mediaID = null;
+    file = value; mediaID = null;sourceChanged('upload');
     if (mediaURL) URL.revokeObjectURL(mediaURL); mediaURL = URL.createObjectURL(file);
     $('preview').src = mediaURL; $('filename').textContent = file.name; $('file-meta').textContent = (file.size / 1024**2).toFixed(1) + ' MB';
     $('media-kind').textContent = value.type.startsWith('audio/') || /\.(mp3|wav|flac|ogg|m4a|aac)$/i.test(value.name) ? 'Audio' : 'Video';
@@ -144,7 +149,7 @@
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
-  const controls = ['transcribe', 'translate', 'export-video', 'separate', 'import-file', 'media-file', 'transcript', 'translated', 'speech-model', 'source-language', 'translate-from', 'translate-to', 'subtitle-track', 'caption-style', 'clear-draft','delivery-wait','delivery-email','result-email','job-translate','job-translate-to'];
+  const controls = ['transcribe', 'translate', 'export-video', 'separate', 'import-file', 'media-file', 'transcript', 'translated', 'speech-model', 'source-language', 'translate-from', 'translate-to', 'subtitle-track', 'caption-style', 'clear-draft','delivery-wait','delivery-email','result-email','job-translate','job-translate-to','source-upload','source-link','video-url','link-render-video'];
   async function operation(title, action, cancellable = false) {
     if (busy) return;
     busy = true; controller = new AbortController(); const old = controls.map(id => $(id).disabled);
@@ -178,6 +183,7 @@
       const button=document.createElement('button');button.type='button';button.className='button secondary';button.textContent='↓ '+name;
       button.addEventListener('click',()=>PrompterTools.download(job.result.files[name],name));$('recording-job-files').append(button);
     }
+    if(job.result?.video_url){const url=new URL(job.result.video_url);if(url.protocol==='https:'&&url.hostname==='github.com'){const link=document.createElement('a');link.className='button primary';link.href=url.href;link.textContent='↓ Download captioned MP4';link.target='_blank';link.rel='noopener';$('recording-job-files').append(link);$('export-results').replaceChildren(link.cloneNode(true));}}
   }
   $('copy-recording-link').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('recording-job-link').href);$('copy-recording-link').textContent='Copied';}catch{$('copy-recording-link').textContent='Copy the saved result URL';}});
   function applyRecording(job) {
@@ -186,7 +192,20 @@
     if(result.translated_cues?.length){$('translated').value=SRT.toSRT(result.translated_cues);translationSource=$('transcript').value;$('translate-to').value=job.translate_to;$('subtitle-track').value='translated';}
     transcriptChanged();appliedRecordingId=job.job_id;
   }
-  async function watchRecording(id,{signal,apply=false,sourceFile=file,sourceText=$('transcript').value}={}) {
+  async function queueVideoLink(signal,subtitles){
+    const source_url=inputVideoURL(), email=$('delivery-email').checked?$('result-email').value.trim():'';
+    if($('delivery-email').checked&&!validRecipient(email))throw new Error('Enter a valid recipient email address.');
+    const render_video=!!subtitles || $('link-render-video').checked;
+    $('export-results').replaceChildren();
+    const created=await http(speechBase()+'/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:$('speech-model').value,language:$('source-language').value,chunk_count:0,source_url,render_video,caption_style:$('caption-style').value,email,name:'Video link · '+new URL(source_url).hostname,translate_to:!subtitles&&$('job-translate').checked?$('job-translate-to').value:null,...(subtitles?{subtitles}: {})}),signal});
+    activeRecordingId=created.job_id;try{sessionStorage.setItem('prompter_media_job',created.job_id);}catch{}
+    await http(speechBase()+'/jobs/'+created.job_id+'/start',{method:'POST',headers:{Authorization:'Bearer '+created.upload_token,'Content-Type':'application/json'},body:'{}',signal});
+    renderRecordingJob({...created,status:'queued',source_type:'link',message:'Video link accepted. The server will download and process it; you can close this tab.',notification:email?'pending':'none'});
+    const options={apply:!subtitles,sourceFile:file,sourceURL:$('video-url').value.trim(),sourceText:$('transcript').value};
+    if(email){status('Video link accepted. You can close this tab.','Your result email will include the transcript, subtitles and any captioned-video download link.');watchRecording(created.job_id,options).catch(()=>{$('recording-job-message').textContent='Processing continues. Reopen the saved result link or wait for your email.';});}
+    else await watchRecording(created.job_id,{...options,signal});
+  }
+  async function watchRecording(id,{signal,apply=false,sourceFile=file,sourceURL,sourceText=$('transcript').value}={}) {
     activeRecordingId=id; const started=Date.now();let failures=0;
     while(Date.now()-started<46*60000 && activeRecordingId===id){
       if(signal?.aborted)throw new DOMException('Cancelled','AbortError');
@@ -195,7 +214,7 @@
       catch(error){if(signal?.aborted||++failures>=5)throw error;await new Promise(resolve=>setTimeout(resolve,3000));continue;}
       renderRecordingJob(job);
       if(job.status==='done'){
-        if(apply && appliedRecordingId!==id && (params.has('media_job') || (file===sourceFile && $('transcript').value===sourceText)))applyRecording(job);
+        if(apply && appliedRecordingId!==id && (params.has('media_job') || (file===sourceFile && (!sourceURL || (sourceMode==='link' && $('video-url').value.trim()===sourceURL)) && $('transcript').value===sourceText)))applyRecording(job);
         status('Your recording is ready.',job.message,1);
         if(job.notification!=='pending')return job;
       }
@@ -250,6 +269,7 @@
     throw new Error('Whisper is taking longer than expected. Retry with the same media to reconnect to this job.');
   }
   $('transcribe').addEventListener('click', () => operation('Creating your transcript…', async signal => {
+    if(sourceMode==='link'){await queueVideoLink(signal);return;}
     if (!file) throw new Error('Choose a video or audio file first.');
     const language = $('source-language').value, speechModel = $('speech-model').value;
     if (speechModel === 'parakeet' && language !== 'en') throw new Error('Parakeet supports English here. Choose Auto or Whisper for this language.');
@@ -322,6 +342,10 @@
   }
   let exportURL;
   $('export-video').addEventListener('click', () => operation('Exporting captioned video…', async signal => {
+    if(sourceMode==='link'){
+      const subtitles=SRT.toSRT(cues(selectedText()));if(new TextEncoder().encode(subtitles).length>40000)throw new Error('Caption export supports timed subtitles up to 40 KB.');
+      await queueVideoLink(signal,subtitles);return;
+    }
     if (!file || $('media-kind').textContent !== 'Video') throw new Error('Choose a video file before exporting a captioned MP4.');
     const subtitles = SRT.toSRT(cues(selectedText()));
     if (new TextEncoder().encode(subtitles).length > 40000) throw new Error('Caption export supports up to 40 KB of timed subtitles. Split longer projects into sections.');
@@ -335,6 +359,7 @@
   }, !local));
   $('sam-visual').addEventListener('change', () => { $('bbox-fields').classList.toggle('hidden', $('sam-visual').value !== 'box'); $('mask-field').classList.toggle('hidden', $('sam-visual').value !== 'mask'); });
   $('separate').addEventListener('click', () => operation('Separating your audio…', async () => {
+    if(sourceMode==='link')throw new Error('SAM Audio uses a local media file. Download the linked video, then choose Upload file.');
     if (!local) throw new Error('SAM Audio is available only through the local launcher.');
     const visual = $('sam-visual').value;
     if (visual === 'mask' && !$('sam-mask').files[0]) throw new Error('Choose a mask image or synchronized mask video.');
@@ -368,8 +393,8 @@
       local = state.local === true; cfg.localBackend = local;
       if (local) {
         $('environment').lastChild.textContent = 'Local studio'; $('sam-controls').disabled = !state.sam; $('sam-unavailable').classList.toggle('hidden', state.sam); $('sam-badge').textContent = state.sam ? 'Ready' : 'Offline';
-        $('privacy-note').textContent = 'Media is processed locally. Only transcription audio and translation text go to NVIDIA.';
-        $('export-note').textContent = 'Video exports render with your local FFmpeg installation. Your video stays on this machine.';
+        $('privacy-note').textContent = 'Uploaded media is processed locally. Video-link jobs run on the server. Transcription audio and translation text go to NVIDIA.';
+        $('export-note').textContent = 'Uploaded videos render with local FFmpeg. Video links use the server renderer and produce a public MP4 download.';
         $('speech-note').textContent = state.nvidia ? 'English uses Parakeet word timing. Other languages use Whisper with approximate segment timing; review before export.' : 'NVIDIA_API_KEY is missing. Add it to worker/.dev.vars and restart.';
         $('transcribe').disabled = !state.nvidia;
         $('speech-model').options[2].disabled = !state.multilingual;

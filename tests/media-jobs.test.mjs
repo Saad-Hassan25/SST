@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { MediaJob, handleMediaJobs } from '../worker/media-jobs.js';
+import { MediaJob, handleMediaJobs, videoLink } from '../worker/media-jobs.js';
 const {wavBlob}=createRequire(import.meta.url)('../docs/studio/media.js');
 const ID='12345678-1234-4123-8123-123456789abc',origin='https://prompter.neuralforge.tech';
 function environment(){
@@ -43,4 +43,33 @@ test('translation must retain every original timestamp and partial results are n
   const bad={cues:[{start:0,end:1,text:'Hello'}],translated_cues:[{start:2,end:3,text:'Translated'}],files:{'transcript.txt':'Hello'}};
   // State can only advance through a sealed job.
   assert.equal((await object.fetch(internal('/result',bad,{'X-Runner':'yes'}))).status,409);
+});
+
+test('website links need no media extension; invalid links and YouTube fail before dispatch',()=>{
+  assert.equal(videoLink('https://www.facebook.com/watch/?v=123456789'),'https://www.facebook.com/watch/?v=123456789');
+  assert.equal(videoLink('https://example.org/watch/123'),'https://example.org/watch/123');
+  for(const url of ['file:///C:/video.mp4','javascript:alert(1)','https://user:secret@example.com/video','http://localhost/video','https://youtu.be/123','not a url'])assert.throws(()=>videoLink(url));
+});
+
+test('linked jobs seal without chunks, privately retain edited subtitles and pin rendered download URLs',async()=>{
+  const {env,object,data}=environment(),subtitles='1\n00:00:00,000 --> 00:00:01,000\nEdited subtitles';
+  const input={model:'auto',language:'en',chunk_count:0,source_url:'https://www.facebook.com/watch/?v=123456789',render_video:true,caption_style:'bold',subtitles};
+  const createRequest=value=>new Request('https://relay/speech/jobs',{method:'POST',headers:{Origin:origin,'Content-Type':'application/json'},body:JSON.stringify(value)});
+  assert.equal((await handleMediaJobs(createRequest({...input,chunk_count:1}),env)).status,400);
+  assert.equal((await handleMediaJobs(createRequest({...input,caption_style:'arbitrary-filter'}),env)).status,400);
+  const created=await(await handleMediaJobs(createRequest(input),env)).json();
+  const original=globalThis.fetch;let dispatched;
+  globalThis.fetch=async(url,options)=>{dispatched=JSON.parse(options.body);return new Response(null,{status:204});};
+  try{
+    assert.equal((await object.fetch(internal('/start',{}, {'X-Upload-Token':created.upload_token}))).status,202);
+    assert.deepEqual(dispatched.client_payload,{job_id:created.job_id});
+    const status=await(await object.fetch(internal('/status'))).json();assert.equal(status.source_type,'link');assert.equal(status.status,'queued');assert.ok(!JSON.stringify(status).includes('facebook'));assert.ok(!JSON.stringify(status).includes('Edited subtitles'));
+    const manifest=await(await object.fetch(internal('/manifest',undefined,{'X-Runner':'yes'}))).json();assert.equal(manifest.source_url,input.source_url);assert.equal(manifest.subtitles,subtitles);
+    const result={cues:[{start:0,end:1,text:'Edited subtitles'}],translated_cues:[],files:{'subtitles.srt':subtitles},timing_quality:'word',video_url:'https://evil.test/video.mp4'};
+    assert.equal((await object.fetch(internal('/result',result,{'X-Runner':'yes'}))).status,400);
+    result.video_url=`https://github.com/owner/repo/releases/download/job-${created.job_id}/captioned.mp4`;
+    assert.equal((await object.fetch(internal('/result',result,{'X-Runner':'yes'}))).status,200);
+    const ready=await(await object.fetch(internal('/status'))).json();assert.equal(ready.result.video_url,result.video_url);
+    await object.fetch(internal('/notification',{status:'none'},{'X-Runner':'yes'}));assert.ok(!data.get('private').source_url);assert.ok(!data.get('private').subtitles);
+  }finally{globalThis.fetch=original;}
 });
