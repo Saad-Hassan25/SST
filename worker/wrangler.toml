@@ -40,6 +40,14 @@ id = "50238c3850df4aa59c76093ff9c78621"
 name = "AI_JOBS"
 class_name = "AIJob"
 
+[[durable_objects.bindings]]
+name = "WHISPER_JOBS"
+class_name = "WhisperJob"
+
 [[migrations]]
 tag = "ai-jobs-v1"
 new_sqlite_classes = ["AIJob"]
+
+[[migrations]]
+tag = "whisper-jobs-v1"
+new_sqlite_classes = ["WhisperJob"]

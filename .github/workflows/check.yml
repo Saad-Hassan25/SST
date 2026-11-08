@@ -2,9 +2,9 @@ name: Check website and relay
 
 on:
   push:
-    paths: ['docs/**', 'worker/**', 'scripts/caption.py', 'tests/**', 'package*.json', '.github/workflows/check.yml']
+    paths: ['docs/**', 'worker/**', 'scripts/*.py', '.github/workflows/whisper.yml', 'tests/**', 'package*.json', '.github/workflows/check.yml']
   pull_request:
-    paths: ['docs/**', 'worker/**', 'scripts/caption.py', 'tests/**', 'package*.json', '.github/workflows/check.yml']
+    paths: ['docs/**', 'worker/**', 'scripts/*.py', '.github/workflows/whisper.yml', 'tests/**', 'package*.json', '.github/workflows/check.yml']
 
 permissions:
   contents: read
@@ -31,4 +31,6 @@ jobs:
           sudo apt-get update && sudo apt-get install -y ffmpeg
           mkdir -p .wrangler/test-media
           ffmpeg -hide_banner -loglevel error -y -f lavfi -i testsrc=size=160x90:rate=10 -t 1 -pix_fmt yuv420p .wrangler/test-media/sample.mp4
+          ffmpeg -hide_banner -loglevel error -y -f lavfi -i color=c=0x142c3d:size=640x360:rate=15 -f lavfi -i sine=frequency=440:sample_rate=16000 -t 4 -c:v libx264 -pix_fmt yuv420p -c:a aac .wrangler/test-media/studio.mp4
       - run: npm run test:browser
+      - run: npm run test:studio

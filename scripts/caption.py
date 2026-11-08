@@ -9,7 +9,7 @@ from pathlib import Path
 
 STYLES = {
     "classic": "FontName=DejaVu Sans,FontSize=22,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2,Shadow=1,MarginV=24",
-    "bold": "FontName=DejaVu Sans,FontSize=26,Bold=1,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=30",
+    "bold": "FontName=DejaVu Sans,FontSize=26,Bold=1,PrimaryColour=&H0092ABFF,OutlineColour=&H00000000,BorderStyle=1,Outline=3,Shadow=0,MarginV=30",
     "minimal": "FontName=DejaVu Sans,FontSize=20,PrimaryColour=&H00FFFFFF,OutlineColour=&H80000000,BorderStyle=3,Outline=3,Shadow=0,MarginV=24",
 }
 TIMING = re.compile(r"^(\d{2,}):([0-5]\d):([0-5]\d),(\d{3}) --> (\d{2,}):([0-5]\d):([0-5]\d),(\d{3})$")

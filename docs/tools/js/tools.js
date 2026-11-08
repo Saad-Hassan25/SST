@@ -317,7 +317,7 @@
     output("selftest-output", "AI connection ready: " + answer);
   });
   window.PrompterTools = {
-    download, snapshot,
+    download, snapshot, translateCues, translateText,
     restoreIndex() {
       try {
         const value = JSON.parse(sessionStorage.getItem("prompter_ai_index") || "null");

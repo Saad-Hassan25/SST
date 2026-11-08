@@ -93,14 +93,14 @@ export async function handleAI(request, env) {
 
 // Split JSON so vision inputs and embedding outputs stay below the per-value
 // Durable Object storage limit. All blocks are committed in a storage transaction.
-async function writeLarge(storage, key, value) {
+export async function writeLarge(storage, key, value) {
   const raw = JSON.stringify(value), entries = {};
   for (let i = 0; i < raw.length; i += 20000) entries[`${key}:${i / 20000}`] = raw.slice(i, i + 20000);
   entries[`${key}:count`] = Math.ceil(raw.length / 20000);
   const keys = Object.keys(entries);
   for (let i = 0; i < keys.length; i += 100) await storage.put(Object.fromEntries(keys.slice(i, i + 100).map(k => [k, entries[k]])));
 }
-async function readLarge(storage, key) {
+export async function readLarge(storage, key) {
   const count = await storage.get(`${key}:count`);
   const keys = Array.from({ length: count || 0 }, (_, i) => `${key}:${i}`);
   const pieces = [];
@@ -111,7 +111,7 @@ async function readLarge(storage, key) {
   return count ? JSON.parse(pieces.join("")) : null;
 }
 
-async function clearLarge(storage, key) {
+export async function clearLarge(storage, key) {
   const count = (await storage.get(`${key}:count`)) || 0;
   const keys = [`${key}:count`, ...Array.from({ length: count }, (_, i) => `${key}:${i}`)];
   for (let i = 0; i < keys.length; i += 100) await storage.delete(keys.slice(i, i + 100));

@@ -39,6 +39,12 @@
     throw new Error("This model job is taking longer than expected. Use its saved link to keep checking.");
   }
   async function req(kind, payload) {
+    if (cfg.localBackend && kind === "chat") {
+      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(250000) });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Local NVIDIA connection failed.');
+      return result;
+    }
     const bytes = new TextEncoder().encode(JSON.stringify({ kind, payload }));
     const digest = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), n => n.toString(16).padStart(2, "0")).join("");
     const saved = read();

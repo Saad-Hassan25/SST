@@ -7,7 +7,9 @@
 // Configure via wrangler.toml [vars] + secrets (see wrangler.toml).
 
 import { handleAI } from "./ai.js";
+import { handleSpeech } from "./speech.js";
 export { AIJob } from "./ai.js";
+export { WhisperJob } from "./whisper.js";
 
 const MODES = new Set(["download", "transcribe", "captions"]);
 const QUALITIES = new Set(["best", "1080p", "720p", "480p", "360p"]);
@@ -291,9 +293,9 @@ export default {
     if (request.method === "OPTIONS") return new Response(null, { headers: cors(env) });
 
     const { pathname } = new URL(request.url);
-    if (pathname.startsWith("/ai/")) {
+    if (pathname.startsWith("/ai/") || pathname.startsWith("/speech/")) {
       try {
-        const response = await handleAI(request, env);
+        const response = await (pathname.startsWith("/speech/") ? handleSpeech(request, env) : handleAI(request, env));
         const headers = new Headers(response.headers);
         for (const [key, value] of Object.entries(cors(env))) headers.set(key, value);
         headers.set("Cache-Control", "no-store");

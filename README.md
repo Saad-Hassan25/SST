@@ -1,3 +1,89 @@
+# Prompter Studio
+
+A single workspace for video/audio ? timed transcript ? translation ? subtitles ? captioned MP4, in navy, cream and coral. The frontend stays on GitHub Pages. Existing media downloads and AI tools remain available.
+
+## Run locally on this machine
+
+From the SAM Audio folder:
+
+```powershell
+Set-Location "S:\Work\Sam Audio 3D"
+.\start.ps1 -Studio
+```
+
+Or from this repository:
+
+```powershell
+Set-Location "S:\Work\SST"
+.\start-studio.ps1
+```
+
+Open **http://127.0.0.1:8765**. Keep the terminal open; Ctrl+C stops the server. The original SAM-only UI still starts with `start.ps1` without `-Studio`.
+
+The launcher uses the existing SAM Audio Python environment and model cache on E:. Set `SAM_AUDIO_ROOT` if that project moves. SAM code and weights are not copied into this repository. Large is selected by default in the studio; text, positive/negative spans, fixed boxes and uploaded image/video masks can be combined. White in masks means keep the object. Automatic SAM 3 tracking remains a separate preprocessing step.
+
+The NVIDIA key is read from the ignored `worker/.dev.vars` file or `NVIDIA_API_KEY` environment variable. It is never sent to the browser. The local server binds to 127.0.0.1 and accepts writes only from its own origin. Media/results are stored under ignored `work/studio/`; they remain until you delete them.
+
+For a fresh machine, install the separate multilingual client after the SAM environment is set up:
+
+```powershell
+uv venv --python "S:\Work\Sam Audio 3D\.venv\Scripts\python.exe" .venv
+uv pip install --python .venv/Scripts/python.exe nvidia-riva-client==2.28.0
+```
+
+This small environment isolates Riva's newer protobuf requirements from SAM Audio's older dependencies. It downloads no model weights.
+
+## The workflow
+
+1. Choose or drop a video/audio file. Preview it immediately, or import SRT/VTT/TXT.
+2. Choose Auto, Parakeet (English) or NVIDIA-hosted Whisper Large v3 (multilingual), both locally and on the deployed website. Edit SRT directly or seek through the timed view.
+3. Translate the original transcript; cue boundaries and speaker labels are preserved. Riva is used for supported language pairs, and a text model for auto-detection/Urdu and other unsupported pairs. Changing the source marks its previous translation as stale.
+4. Choose the original or translated subtitle track. Preview captions, download SRT/VTT/TXT, or render a captioned MP4. Translation changes subtitle text, not the spoken audio.
+5. Optionally isolate a sound with local SAM Audio and download target/residual WAVs and videos.
+
+Parakeet supplies real word timestamps. The hosted Whisper endpoint returned no word timestamps in live checks, so multilingual Whisper transcription uses explicitly labelled **approximate 8-second segment timing**. Review those timings against the video before export. Imported timings are retained. Plain TXT is never silently assigned invented timestamps.
+
+Text drafts are saved in sessionStorage for this browser tab; media files must be selected again after refresh. NVIDIA receives audio for transcription and text for translation under its API terms. Local video and SAM processing stay on your machine. Browser previews use a styled overlay plus an accessible VTT track.
+
+## GitHub Pages behavior
+
+- Uploads: up to 250 MB in the browser; up to 1 GB with the local backend.
+- Web upload transcription: choose Parakeet for English or Whisper Large v3 for multilingual input. The browser sends mono WAV chunks of up to 60 seconds. Whisper uses a GitHub Actions bridge to NVIDIA gRPC; audio stays in private Durable Object storage, is fetched by an authenticated runner, and is deleted on completion/error or after a 20-minute timeout. No audio/transcript is published in releases or logs. Results expire in one hour. Jobs share the NVIDIA request budget and can wait for a runner. Retrying the same media/language in the same tab reconnects to saved jobs.
+- Captioned MP4: renders in-browser with single-thread ffmpeg.wasm, without requiring cross-origin isolation headers unavailable on Pages. First use downloads ~31 MB from the pinned jsDelivr package and open Noto subtitle fonts from their source repositories. Extra script fonts load only when needed. Browser export supports ?250 MB inputs, ?40 KB subtitles, and a 30-minute render timeout. Local exports use native FFmpeg.
+- SAM Audio: visibly disabled on GitHub Pages. Even a static localhost preview cannot enable it; the same-origin local backend must report it available.
+- `download.html` keeps the original public-link/Actions workflow. Old root `?job=` links redirect there. Completed jobs can open the new studio using `?source_job=` with their timestamps intact. `tools/` retains the existing advanced AI tools and uses the same theme.
+
+### Publish the update
+
+The frontend uses the existing GitHub Pages branch (`main`, `/docs`). Deploy the Worker first, then push the frontend and `.github/workflows/whisper.yml`. No hosting migration is needed.
+
+```powershell
+npx wrangler login
+npx wrangler secret put NVIDIA_API_KEY --config worker/wrangler.toml
+# Paste the key at the prompt. Keep it out of public files and command arguments.
+npx wrangler deploy --config worker/wrangler.toml
+```
+
+The Whisper bridge requires `WHISPER_BRIDGE_KEY` in both Worker and repository secrets, and `NVIDIA_API_KEY` in repository secrets as well as the Worker. These are server-side secrets. The local studio reads the ignored development configuration. The public UI never receives either credential.
+
+## Checks
+
+```powershell
+npm ci
+npm test
+npm run check:worker
+npm run test:browser
+npm run test:studio
+```
+
+The Whisper runner workflow installs only the Riva client; inference runs on NVIDIA GPUs, not GitHub Actions.
+
+Browser fixtures live in ignored `.wrangler/test-media/`; see `.github/workflows/check.yml` for generation commands. `test:studio` exercises audio decoding, timed transcription/translation, Arabic subtitle rendering into an actual MP4 with the real WASM core, draft restore, mobile layout and local capability gating. It uses deterministic model responses; live synthetic-content checks also passed NVIDIA speech/translation and local SAM Large through the new adapter.
+
+The retained downloader and advanced-tool implementation details follow.
+
+---
+
 <!-- Project cover -->
 <p align="center">
   <img src="./project-cover.svg" alt="Prompter — Media Download & Transcription cover" width="100%" />
@@ -107,8 +193,7 @@ another terminal. Live checks submit only synthetic test content.
 Validated on 2026-10-05: 18 Node tests and 3 Python tests, desktop/mobile browser
 regressions, actual ffmpeg caption rendering, live summary/translation/embedding/
 safety responses, and real browser-to-Worker-to-NVIDIA background execution.
-The current Cloudflare login has expired, so this workspace implementation has not
-been deployed to the live site.
+
 
 Paste a video link on a static web page; a remote GitHub Actions runner downloads
 the video (at a chosen quality) or transcribes it with **NVIDIA Parakeet TDT**, and

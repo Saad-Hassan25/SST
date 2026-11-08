@@ -2,18 +2,19 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="color-scheme" content="dark"><meta name="theme-color" content="#080b14">
+<meta name="color-scheme" content="light"><meta name="theme-color" content="#142c3d">
 <title>Prompter AI Tools — Transform your media</title>
 <meta name="description" content="Summarize, translate, search, repurpose and subtitle your transcripts. Describe images and videos with Prompter AI Tools.">
 <link rel="icon" href="../logo.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/styles.css">
+<link rel="stylesheet" href="../studio/theme.css">
 </head>
 <body>
 <header class="site-head"><div class="wrap head-bar">
 <a class="brand" href="../"><img src="../logo.svg" alt="" width="28" height="28"> Prompter <em>/ AI Tools</em></a>
-<nav class="site-nav" aria-label="Primary navigation"><a href="../#workspace">Download &amp; transcribe</a><a href="#source">Your transcript</a></nav>
+<nav class="site-nav" aria-label="Primary navigation"><a href="../">Studio workspace</a><a href="#source">Your transcript</a></nav>
 <span class="nav-pill"><span class="live-dot"></span> No account needed</span>
 </div></header>
 <main class="wrap">
@@ -69,7 +70,8 @@
 <section class="panel" id="safety"><div class="panel-body"><p class="form-kicker">Review before publishing</p><h2>Content safety check</h2><p class="desc">Get an automated safety classification and flagged categories for each part of your text.</p>
 <label class="label" for="safe-input">Transcript or draft</label><textarea class="input area" id="safe-input" rows="5"></textarea><button class="submit" onclick="toolSafety(this)">Check safety</button><pre class="output hidden" id="safe-output"></pre></div></section>
 </div>
-<details class="panel future"><summary>More media tools in development</summary><div class="panel-body"><p>Translated dubbing, audio cleanup and synthetic-video detection need additional service access before they can run. 3D pose tracking and a live voice assistant remain experimental.</p><p class="hint">These tools are not available yet.</p></div></details>
+<section class="panel"><div class="panel-body"><p class="form-kicker">Local processing</p><h2>Isolate sound with SAM Audio</h2><p class="desc">Separate voices, instruments and other sounds using your local SAM Audio installation. Text, time spans and visual masks are supported in the studio. SAM Audio is disabled on the deployed website.</p><a class="ghost" href="../#sam">Open SAM Audio in the studio →</a></div></section>
+<details class="panel future"><summary>More media tools in development</summary><div class="panel-body"><p>Translated dubbing and synthetic-video detection need additional service access before they can run. 3D pose tracking and a live voice assistant remain experimental.</p><p class="hint">These tools are not available yet.</p></div></details>
 <details class="panel"><summary>Check service connection</summary><div class="panel-body"><button class="ghost" onclick="toolSelfTest(this)">Check AI connection</button><pre class="output hidden" id="selftest-output"></pre></div></details>
 </main>
 <footer class="site-foot"><div class="wrap foot-legal"><span>© 2026 Prompter</span><a href="../">Back to download &amp; transcribe</a><span>AI powered by NVIDIA</span></div></footer>

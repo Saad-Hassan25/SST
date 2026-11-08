@@ -19,7 +19,7 @@ const server = http.createServer(async (req, res) => {
   } catch { res.writeHead(404).end(); }
 });
 (async () => {
-  await new Promise(resolve => server.listen(8765, '127.0.0.1', resolve));
+  await new Promise(resolve => server.listen(8767, '127.0.0.1', resolve));
   let browser;
   try { browser = await chromium.launch({ headless: true }); }
   catch { browser = await chromium.launch({ channel: 'msedge', headless: true }); }
@@ -99,13 +99,13 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/trigger') { lastTrigger = request.postDataJSON(); return route.fulfill({ json: { job_id: ID, mode: lastTrigger.mode } }); }
       throw new Error('Unexpected relay request: ' + url.pathname);
     });
-    await page.goto('http://127.0.0.1:8765/');
+    await page.goto('http://127.0.0.1:8767/download.html');
     await expect(page.locator('#submit')).toHaveText('Download video');
     await page.locator('#mode-transcribe').click();
     await expect(page.locator('#submit')).toHaveText('Get transcript');
     await page.locator('#diarize').check(); await expect(page.locator('#speakers-field')).toBeVisible();
     console.log('PASS existing download/transcription controls');
-    await page.goto('http://127.0.0.1:8765/?job=' + ID);
+    await page.goto('http://127.0.0.1:8767/download.html?job=' + ID);
     await expect(page.getByText('Speaker-labelled transcript ready')).toBeVisible();
     await page.getByRole('link', { name: 'Use transcript in AI Tools' }).click();
     await expect(page.locator('#sum-input')).toHaveValue(srt);
@@ -180,7 +180,7 @@ const server = http.createServer(async (req, res) => {
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await fs.mkdir('test-results', { recursive: true });
     await page.screenshot({ path: 'test-results/tools-mobile.png', fullPage: true });
-    await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto('http://127.0.0.1:8765/tools/');
+    await page.setViewportSize({ width: 1440, height: 1000 }); await page.goto('http://127.0.0.1:8767/tools/');
     await page.screenshot({ path: 'test-results/tools-desktop.png', fullPage: true });
     assert.deepEqual(errors, []);
     console.log('PASS desktop/mobile layout and zero browser script errors');
@@ -190,7 +190,7 @@ const server = http.createServer(async (req, res) => {
         const response = await route.fetch({ url: route.request().url().replace('https://yt-actions-relay.yt-actions-relay.workers.dev', 'http://127.0.0.1:8787') });
         await route.fulfill({ response });
       });
-      await page.goto('http://127.0.0.1:8765/tools/');
+      await page.goto('http://127.0.0.1:8767/tools/');
       await page.locator('#sum-input').fill('Speaker 1: We agreed to launch Friday. Speaker 2: I will prepare the slides.');
       await page.locator('#summary .submit').click(); await expect(page.locator('#sum-output')).not.toBeEmpty({ timeout: 300000 });
       await expect(page.locator('#summary .job-status')).not.toContainText('error');
