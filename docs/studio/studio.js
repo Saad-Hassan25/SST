@@ -382,7 +382,8 @@
     $('speech-model').options[2].disabled = true;
     try {
       const state = await http(relay + '/speech/config');backgroundAvailable=!!state.background;
-      $('speech-note').textContent = state.whisper ? 'English defaults to Parakeet word timing. Whisper runs on NVIDIA through a queued runner, with approximate segment timing. Audio is deleted after processing; results expire in one hour.' : 'Parakeet supports English. Import subtitles in any language to translate and export them.';
+      $('speech-note').textContent = state.background ? 'NVIDIA processes the complete recording after upload. Choose wait or email delivery below; results are saved for three days. Whisper timing is approximate.' : state.whisper ? 'English defaults to Parakeet word timing. Whisper runs on NVIDIA through a queued runner, with approximate segment timing. Audio is deleted after processing; results expire in one hour.' : 'Parakeet supports English. Import subtitles in any language to translate and export them.';
+      $('transcribe').disabled=!state.available;
       if (state.whisper) { $('speech-model').options[2].disabled = false; for (const [code, name] of cfg.languages) if (code !== 'en') $('source-language').append(new Option(name, code)); }
       if (!state.available) { $('transcribe').disabled = true; $('speech-note').textContent = 'Speech service is not configured yet. Import subtitles or use a public media link in the downloader.'; }
     }
