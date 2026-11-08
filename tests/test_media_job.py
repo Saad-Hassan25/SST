@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +15,23 @@ import link_video
 
 
 class BackgroundMediaTests(unittest.TestCase):
+    def test_redirected_video_without_a_known_extension_is_probed_as_media(self):
+        class Downloader:
+            def __init__(self,options): self.options=options
+            def __enter__(self): return self
+            def __exit__(self,*args): pass
+            def extract_info(self,url,download):
+                self.asserted_url=url
+                Path(self.options['outtmpl'].replace('%(ext)s','unknown_video')).write_bytes(b'video content')
+        modules={'yt_dlp':SimpleNamespace(YoutubeDL=Downloader),'fetch':SimpleNamespace(QUALITY_PRESETS={'720p':'best'},apply_env_hardening=lambda options:options)}
+        metadata=b'{"format":{"duration":"7.4"},"streams":[{"codec_type":"video"},{"codec_type":"audio"}]}'
+        with tempfile.TemporaryDirectory() as directory,patch.dict(sys.modules,modules),patch.object(link_video.subprocess,'run',return_value=SimpleNamespace(stdout=metadata)) as run:
+            source,audio=link_video.download_link('https://example.org/watch/123',directory)
+            self.assertEqual(source.name,'source.unknown_video')
+            self.assertEqual(audio.name,'audio.wav')
+            self.assertEqual(run.call_args_list[0].args[0][0],'ffprobe')
+            self.assertEqual(run.call_args_list[1].args[0][0],'ffmpeg')
+
     def test_edited_subtitle_render_uses_fixed_paths_and_preserves_timing(self):
         subtitles='1\n00:00:00,160 --> 00:00:01,000\nEdited <i>words</i>\nSecond line\n\n2\n00:00:02,000 --> 00:00:03,000\nFinal words\n'
         cues=link_video.subtitle_cues(subtitles)

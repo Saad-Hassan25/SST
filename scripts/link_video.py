@@ -45,7 +45,9 @@ def download_link(url, directory):
         with yt_dlp.YoutubeDL(options) as downloader:
             downloader.extract_info(url,download=True)
         stage='locate'
-        candidates=[p for p in directory.glob('source.*') if p.suffix.lower() in {'.mp4','.mkv','.webm','.mov','.m4v','.avi'}]
+        # Redirected downloads may have no recognized extension (unknown_video).
+        # Inspect the actual media with ffprobe instead of requiring a filename suffix.
+        candidates=[p for p in directory.glob('source.*') if p.is_file() and p.suffix.lower() not in {'.part','.ytdl','.temp'}]
         if not candidates:
             raise VideoSourceError('source_unavailable')
         source=max(candidates,key=lambda p:p.stat().st_size)
